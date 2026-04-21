@@ -5,12 +5,7 @@ import {
   type Confidence,
   type Recommendation,
 } from "./prompts";
-import {
-  buildDataHash,
-  getCachedReport,
-  saveReport,
-  type CachedReport,
-} from "./cache";
+import { buildDataHash, getCachedReport, saveReport } from "./cache";
 import { selectModel, type ClaudeModelId, type TaskType } from "./router";
 import { logUsage } from "./usage";
 import { calculateCost } from "@/lib/utils/cost";

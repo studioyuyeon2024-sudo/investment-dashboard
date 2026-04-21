@@ -32,16 +32,22 @@ export default function Home() {
 
       <div className="flex flex-wrap gap-3">
         <Link
-          href="/dashboard"
-          className={buttonVariants({ variant: "outline", size: "lg" })}
+          href="/holdings/005930"
+          className={buttonVariants({ variant: "default", size: "lg" })}
         >
-          대시보드 (준비 중)
+          삼성전자 (005930) 분석
         </Link>
         <Link
-          href="/settings/billing"
+          href="/holdings/000660"
           className={buttonVariants({ variant: "outline", size: "lg" })}
         >
-          비용 현황 (준비 중)
+          SK하이닉스 (000660)
+        </Link>
+        <Link
+          href="/holdings/035720"
+          className={buttonVariants({ variant: "outline", size: "lg" })}
+        >
+          카카오 (035720)
         </Link>
       </div>
 

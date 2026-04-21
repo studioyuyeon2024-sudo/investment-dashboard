@@ -5,12 +5,14 @@ import type {
   KisQuote,
   KisToken,
 } from "./types";
+import { getSupabaseServiceClient } from "@/lib/supabase/client";
 
 const REAL_BASE = "https://openapi.koreainvestment.com:9443";
 const PAPER_BASE = "https://openapivts.koreainvestment.com:29443";
+const SAFETY_MARGIN_MS = 5 * 60 * 1000;
 
-type TokenCache = { token: string; expiresAt: number };
-let tokenCache: TokenCache | null = null;
+type TokenCache = { token: string; expiresAt: number; env: KisEnvironment };
+let memoryCache: TokenCache | null = null;
 
 function getConfig() {
   const appKey = process.env.KIS_APP_KEY;
@@ -28,10 +30,29 @@ function getConfig() {
 
 export async function getAccessToken(): Promise<string> {
   const now = Date.now();
-  if (tokenCache && tokenCache.expiresAt - 60_000 > now) {
-    return tokenCache.token;
+  const { env } = getConfig();
+
+  if (
+    memoryCache &&
+    memoryCache.env === env &&
+    memoryCache.expiresAt - SAFETY_MARGIN_MS > now
+  ) {
+    return memoryCache.token;
   }
 
+  const dbToken = await readDbToken(env);
+  if (dbToken && dbToken.expiresAt - SAFETY_MARGIN_MS > now) {
+    memoryCache = dbToken;
+    return dbToken.token;
+  }
+
+  return await issueNewToken(env, now);
+}
+
+async function issueNewToken(
+  env: KisEnvironment,
+  now: number,
+): Promise<string> {
   const { appKey, appSecret, baseUrl } = getConfig();
   const res = await fetch(`${baseUrl}/oauth2/tokenP`, {
     method: "POST",
@@ -48,11 +69,56 @@ export async function getAccessToken(): Promise<string> {
   }
 
   const body = (await res.json()) as KisToken;
-  tokenCache = {
-    token: body.access_token,
-    expiresAt: now + body.expires_in * 1000,
-  };
+  const expiresAt = now + body.expires_in * 1000;
+  memoryCache = { token: body.access_token, expiresAt, env };
+  await writeDbToken(env, body.access_token, expiresAt);
   return body.access_token;
+}
+
+async function readDbToken(
+  env: KisEnvironment,
+): Promise<TokenCache | null> {
+  try {
+    const supabase = getSupabaseServiceClient();
+    const { data, error } = await supabase
+      .from("kis_service_token")
+      .select("access_token, expires_at, environment")
+      .eq("id", 1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    if (data.environment !== env) return null;
+
+    return {
+      token: data.access_token,
+      expiresAt: new Date(data.expires_at).getTime(),
+      env: data.environment as KisEnvironment,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writeDbToken(
+  env: KisEnvironment,
+  token: string,
+  expiresAt: number,
+): Promise<void> {
+  try {
+    const supabase = getSupabaseServiceClient();
+    await supabase.from("kis_service_token").upsert(
+      {
+        id: 1,
+        access_token: token,
+        expires_at: new Date(expiresAt).toISOString(),
+        environment: env,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" },
+    );
+  } catch {
+    // DB 쓰기 실패해도 in-memory 캐시는 남아있음
+  }
 }
 
 async function kisGet<T>(
