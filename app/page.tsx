@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { InvestmentDisclaimer } from "@/components/investment-disclaimer";
@@ -32,24 +32,49 @@ export default function Home() {
 
       <div className="flex flex-wrap gap-3">
         <Link
-          href="/holdings/005930"
+          href="/dashboard"
           className={buttonVariants({ variant: "default", size: "lg" })}
         >
-          삼성전자 (005930) 분석
+          내 포트폴리오
         </Link>
         <Link
-          href="/holdings/000660"
+          href="/login"
           className={buttonVariants({ variant: "outline", size: "lg" })}
         >
-          SK하이닉스 (000660)
-        </Link>
-        <Link
-          href="/holdings/035720"
-          className={buttonVariants({ variant: "outline", size: "lg" })}
-        >
-          카카오 (035720)
+          카카오 연결
         </Link>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">빠른 분석 (티커 직접 입력)</CardTitle>
+          <CardDescription>
+            포트폴리오에 등록하지 않아도 바로 분석 가능합니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/holdings/005930"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              삼성전자 005930
+            </Link>
+            <Link
+              href="/holdings/000660"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              SK하이닉스 000660
+            </Link>
+            <Link
+              href="/holdings/035720"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              카카오 035720
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
 
       <InvestmentDisclaimer />
     </main>
