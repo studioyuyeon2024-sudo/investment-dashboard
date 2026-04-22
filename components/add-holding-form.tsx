@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,9 +20,15 @@ type StockSuggestion = {
 
 type Props = {
   portfolioTotalCost: number;
+  onSuccess?: () => void;
+  inSheet?: boolean; // Sheet 내부에서 렌더링 시 테두리·패딩 최소화
 };
 
-export function AddHoldingForm({ portfolioTotalCost }: Props) {
+export function AddHoldingForm({
+  portfolioTotalCost,
+  onSuccess,
+  inSheet,
+}: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
@@ -171,6 +178,7 @@ export function AddHoldingForm({ portfolioTotalCost }: Props) {
           };
           throw new Error(body.error ?? `HTTP ${res.status}`);
         }
+        const addedName = name.trim() || ticker;
         setQuery("");
         setTicker("");
         setName("");
@@ -181,22 +189,45 @@ export function AddHoldingForm({ portfolioTotalCost }: Props) {
         setSuggestions([]);
         setPrefilledFrom(null);
         router.refresh();
+        onSuccess?.();
+        toast.success(`${addedName} 추가 완료`, {
+          description:
+            stopLoss || targetPrice
+              ? "손절/익절 근접 시 카카오톡 알림이 옵니다."
+              : "손절·익절선을 설정하면 자동 알림을 받을 수 있어요.",
+        });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "추가 실패");
+        const msg = err instanceof Error ? err.message : "추가 실패";
+        setError(msg);
+        toast.error("종목 추가 실패", { description: msg });
       }
     });
   };
 
   return (
-    <form onSubmit={submit} className="space-y-3 rounded-lg border p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">종목 추가</h2>
-        {prefilledFrom === "screener" && ticker && (
-          <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400">
-            스크리너에서 가져옴 · 값 수정 가능
-          </span>
-        )}
-      </div>
+    <form
+      onSubmit={submit}
+      className={
+        inSheet
+          ? "space-y-3"
+          : "space-y-3 rounded-lg border p-4"
+      }
+    >
+      {!inSheet && (
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">종목 추가</h2>
+          {prefilledFrom === "screener" && ticker && (
+            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400">
+              스크리너에서 가져옴 · 값 수정 가능
+            </span>
+          )}
+        </div>
+      )}
+      {inSheet && prefilledFrom === "screener" && ticker && (
+        <div className="rounded-md bg-blue-500/10 px-3 py-2 text-xs text-blue-800 dark:text-blue-300">
+          스크리너 추천값으로 채웠습니다. 필요시 수정하세요.
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Field label="종목 검색 (이름/티커)" htmlFor="stock-search">
           <div className="relative">

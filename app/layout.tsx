@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+import { AppHeader } from "@/components/app-shell/app-header";
+import { BottomNav } from "@/components/app-shell/bottom-nav";
+import { Toaster } from "@/components/ui/sonner";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -28,7 +32,13 @@ export default function RootLayout({
       lang="ko"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col bg-background text-foreground">
+        <AppHeader />
+        {/* 하단 탭바(모바일) 가 콘텐츠를 가리지 않도록 여백 */}
+        <div className="flex-1 pb-20 md:pb-0">{children}</div>
+        <BottomNav />
+        <Toaster position="top-center" />
+      </body>
     </html>
   );
 }

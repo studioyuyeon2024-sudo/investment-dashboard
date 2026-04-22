@@ -16,7 +16,7 @@ export default function Home() {
   const services = checkServices();
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-6 py-12 md:py-16">
+    <main className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-4 py-8 md:gap-12 md:px-6 md:py-16">
       <Hero />
       <FeaturesSection />
       <QuickAccess />
