@@ -6,20 +6,19 @@ Usage:
 환경변수:
   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
-pykrx는 공공 KRX 데이터를 긁어오므로 과금 없음.
-실행 시 KOSPI + KOSDAQ 전체 종목(약 2,500개)을 upsert 한다.
-주기적 재실행 권장 (신규 상장/상폐 반영). 월 1회면 충분.
+FinanceDataReader 의 StockListing 은 네이버 금융 등 공개 소스를 긁어오므로
+로그인/과금 없음. KOSPI + KOSDAQ 전체 종목(약 2,500개)을 upsert 한다.
+신규 상장/상폐 반영을 위해 월 1회 정도 주기적 재실행 권장.
 """
 
 from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
+import FinanceDataReader as fdr
 import requests
-from pykrx import stock
 
 
 def load_env_local() -> None:
@@ -39,13 +38,26 @@ def load_env_local() -> None:
 
 
 def fetch_market(market: str) -> list[dict]:
-    today = datetime.now().strftime("%Y%m%d")
-    tickers = stock.get_market_ticker_list(today, market=market)
+    df = fdr.StockListing(market)
+    if df is None or df.empty:
+        return []
+
+    # FDR 버전에 따라 컬럼명이 다를 수 있어 방어적으로 매핑
+    code_col = next((c for c in ("Code", "Symbol", "ISU_CD") if c in df.columns), None)
+    name_col = next((c for c in ("Name", "Stock name") if c in df.columns), None)
+    if code_col is None or name_col is None:
+        print(f"예상치 못한 컬럼 구조: {list(df.columns)}", file=sys.stderr)
+        return []
+
     rows: list[dict] = []
-    for ticker in tickers:
-        name = stock.get_market_ticker_name(ticker)
-        if not name:
+    seen: set[str] = set()
+    for _, row in df.iterrows():
+        ticker = str(row[code_col]).strip().zfill(6)
+        name = str(row[name_col]).strip()
+        if not ticker or not name or ticker in seen:
             continue
+        # 우선주, SPAC 등을 굳이 걸러내지 않음 — 사용자가 보유할 수 있음
+        seen.add(ticker)
         rows.append({"ticker": ticker, "name": name, "market": market})
     return rows
 
@@ -86,13 +98,6 @@ def main() -> None:
     load_env_local()
     url, key = require_supabase_env()
 
-    if not os.environ.get("KRX_ID") or not os.environ.get("KRX_PW"):
-        print(
-            "환경변수 KRX_ID / KRX_PW 필요 — http://data.krx.co.kr 회원가입 후 등록",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     print("KOSPI 종목 수집 중…")
     kospi = fetch_market("KOSPI")
     print(f"  KOSPI {len(kospi)}개")
@@ -103,7 +108,7 @@ def main() -> None:
 
     rows = kospi + kosdaq
     if not rows:
-        print("수집된 종목이 없습니다 (KRX 응답 확인 필요)", file=sys.stderr)
+        print("수집된 종목이 없습니다 (FDR 응답 확인 필요)", file=sys.stderr)
         sys.exit(1)
     print(f"총 {len(rows)}개 upsert 시작…")
     upsert(rows, url, key)
