@@ -32,3 +32,20 @@ export async function searchStocks(
   }
   return (data ?? []) as StockCatalogRow[];
 }
+
+// 단일 티커의 카탈로그 엔트리 조회. 없으면 null.
+export async function getStockByTicker(
+  ticker: string,
+): Promise<StockCatalogRow | null> {
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from("stocks")
+    .select("ticker, name, market")
+    .eq("ticker", ticker)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`stocks 조회 실패: ${error.message}`);
+  }
+  return (data ?? null) as StockCatalogRow | null;
+}

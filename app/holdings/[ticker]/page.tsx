@@ -3,9 +3,11 @@ import Link from "next/link";
 
 import { getCurrentQuote } from "@/lib/kis/client";
 import { upsertSnapshotFromQuote } from "@/lib/market/snapshots";
+import { getStockByTicker } from "@/lib/stocks";
 import { QuoteCard } from "@/components/quote-card";
 import { AnalyzePanel } from "@/components/analyze-panel";
 import { InvestmentDisclaimer } from "@/components/investment-disclaimer";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -30,19 +32,27 @@ export default async function HoldingDetailPage({
     fetchError = err instanceof Error ? err.message : "시세 조회 실패";
   }
 
+  // 이름 우선순위: KIS 실시간 응답 > Supabase 카탈로그 > 티커 폴백
+  const catalog = await getStockByTicker(ticker).catch(() => null);
+  const displayName = quote?.name || catalog?.name || ticker;
+  const market = catalog?.market ?? null;
+
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-10">
-      <div className="flex items-center justify-between">
-        <Link
-          href="/"
-          className={buttonVariants({ variant: "ghost", size: "sm" })}
-        >
-          ← 홈
-        </Link>
-        <span className="text-xs text-muted-foreground">
-          티커 {ticker}
-        </span>
-      </div>
+      <Link
+        href="/"
+        className={`${buttonVariants({ variant: "ghost", size: "sm" })} self-start`}
+      >
+        ← 홈
+      </Link>
+
+      <header className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight">{displayName}</h1>
+          {market && <Badge variant="secondary">{market}</Badge>}
+        </div>
+        <p className="font-mono text-sm text-muted-foreground">{ticker}</p>
+      </header>
 
       {fetchError ? (
         <Alert variant="destructive">
@@ -52,7 +62,7 @@ export default async function HoldingDetailPage({
       ) : quote ? (
         <>
           <QuoteCard quote={quote} />
-          <AnalyzePanel ticker={ticker} tickerName={quote.name} />
+          <AnalyzePanel ticker={ticker} tickerName={displayName} />
         </>
       ) : null}
 
