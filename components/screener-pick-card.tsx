@@ -120,14 +120,19 @@ export function ScreenerPickCard({ pick }: { pick: ScreenerPick }) {
                 {pick.ticker}
               </span>
             </CardTitle>
-            {typeof pick.indicators === "object" &&
-              pick.indicators !== null &&
-              typeof (pick.indicators as Record<string, unknown>).sector ===
-                "string" && (
+            {(() => {
+              const raw =
+                typeof pick.indicators === "object" &&
+                pick.indicators !== null
+                  ? (pick.indicators as Record<string, unknown>).sector
+                  : null;
+              const sector = isRealSector(raw) ? (raw as string) : null;
+              return sector ? (
                 <span className="rounded-full border border-dashed px-2 py-0.5 text-[10px] text-muted-foreground">
-                  {(pick.indicators as { sector: string }).sector}
+                  {sector}
                 </span>
-              )}
+              ) : null;
+            })()}
             {statusBadge && (
               <span
                 className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusBadge.className}`}
@@ -250,6 +255,23 @@ function PriceStat({
       </span>
     </div>
   );
+}
+
+// KRX 상장 구분 값은 업종 섹터가 아니라 배지로 표시하면 안 됨.
+const NON_SECTOR_VALUES = new Set([
+  "우량기업부",
+  "중견기업부",
+  "벤처기업부",
+  "기술성장기업부",
+  "관리종목",
+  "투자주의환기종목",
+]);
+
+function isRealSector(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return !NON_SECTOR_VALUES.has(trimmed);
 }
 
 // valid_until (YYYY-MM-DD, KST) 까지 남은 일수.

@@ -49,10 +49,23 @@ def _resolve_columns(df) -> tuple[str, str] | None:
 
 def _resolve_sector_column(df) -> str | None:
     # FDR 버전·시장별로 섹터 컬럼명이 상이. 사용 가능한 첫 번째를 채택.
-    for c in ("Sector", "Industry", "Dept", "업종", "업종명"):
+    # 주의: "Dept" 는 KRX 상장 심사 구분(우량기업부/중견기업부/관리종목)이고
+    #       업종 섹터가 아니므로 제외한다.
+    for c in ("Sector", "Industry", "업종", "업종명"):
         if c in df.columns:
             return c
     return None
+
+
+# 업종이 아니라 상장 구분인 값들 — sector 로 들어오면 무효화.
+_NON_SECTOR_VALUES = {
+    "우량기업부",
+    "중견기업부",
+    "벤처기업부",
+    "기술성장기업부",
+    "관리종목",
+    "투자주의환기종목",
+}
 
 
 def _clean_sector(value) -> str | None:
@@ -60,6 +73,8 @@ def _clean_sector(value) -> str | None:
         return None
     s = str(value).strip()
     if not s or s.lower() in {"nan", "none", "-", "n/a"}:
+        return None
+    if s in _NON_SECTOR_VALUES:
         return None
     return s
 
