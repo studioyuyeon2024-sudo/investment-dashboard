@@ -39,6 +39,12 @@ export default async function DashboardPage() {
             ← 홈
           </Link>
           <Link
+            href="/screener"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            스크리너
+          </Link>
+          <Link
             href="/login"
             className={buttonVariants({ variant: "outline", size: "sm" })}
           >
