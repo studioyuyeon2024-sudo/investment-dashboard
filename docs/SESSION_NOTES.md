@@ -112,16 +112,24 @@
 - PickCard "포트폴리오에 담기" 버튼 → `/dashboard?ticker=...&entry=...&stop=...&take=...&from=screener`
 - AddHoldingForm 에서 URL query 로 자동 채움
 
-### Step 4. 카카오 알림 트리거 (Layer 2, 다음 스텝)
-- `/login` 카카오 "나에게 보내기" 파이프라인에 룰 연결:
-  - 손절선 -3% 근접
-  - 익절선 도달
-  - 일간 -5% 급락
-  - 분배락 전일 (ETF)
-- Vercel Cron 또는 GitHub Actions 로 장중·장마감 후 2회 스캔.
-- 중복 발송 방지용 `alerts` 테이블 + (holding_id, type, date) unique.
-- Step 3 에서 이미 `holdingAlertLevel()` 이 pure function 으로 분리돼 있어
-  서버 사이드 스캔에서 그대로 재사용 가능.
+### Step 4. 카카오 자동 알림 (Layer 2, 완료)
+- `supabase/migrations/008_alerts.sql` — `alerts` 테이블
+  - unique(holding_id, type, alert_date) 로 하루 1회 발송 보장
+  - kakao_status: pending/sent/failed/skipped, failed 는 다음 cron 에서 재시도
+  - RLS: service_role 만 접근
+- `lib/alerts/sender.ts` — `sendHoldingAlert()` 카카오 메모 템플릿 + getValidAccessToken 재사용
+- `app/api/cron/price-monitor/route.ts` 확장:
+  - Step 3 의 `holdingAlertLevel()` 재사용
+  - 오늘 동일 (holding, type) 조회 → 없으면 insert, failed 면 retry, sent 면 skip
+  - 발송 결과로 status 업데이트
+- `vercel.json` 기존 cron `*/30 0-6 * * 1-5` (KST 09:00-15:30 30분 간격) 그대로 사용
+- **Supabase SQL Editor 에서 `008_alerts.sql` 수동 실행 필요**
+- **선택 설정**: `CRON_SECRET` 환경변수 (Vercel) — 있으면 cron 이 Bearer 검증
+- 확장 여지 (추후): daily_spike/daily_crash 타입 (±5%), 분배락 전일 등
+
+필요 환경변수:
+- `KAKAO_REST_API_KEY` / `KAKAO_CLIENT_SECRET` — 기존
+- 사용자가 한 번 `/login` 으로 카카오 OAuth 완료해야 `kakao_service_token` row 생성
 
 ---
 
@@ -164,4 +172,4 @@
 
 ## 9. 다음에 이어갈 한 줄
 
-> **Step 1 (필터 튜닝)**: `/screener` 결과의 filtered_count·섹터 분포·confidence 분포를 사용자에게 확인받고, `scripts/python/screener.py` 의 `quant_filter()` 임계치를 조정한 뒤 Step 3 (리스크 가드레일) 로 이동한다.
+> **남은 로드맵**: (Step 2) 스크리너 성과 추적 — 3~6개월 데이터 누적 후 알고리즘 품질 검증. **단기 과제**: `008_alerts.sql` 수동 실행, `/login` 카카오 연결, 가짜 손절/익절선으로 트리거 확인.
