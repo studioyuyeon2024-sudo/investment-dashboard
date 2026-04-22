@@ -13,6 +13,16 @@ export const dynamic = "force-dynamic";
 
 const TICKER_PATTERN = /^[0-9A-Z]{6}$/;
 
+// KRX 상장 구분(업종 아님)은 섹터 배지에서 제외.
+const NON_SECTOR_VALUES = new Set([
+  "우량기업부",
+  "중견기업부",
+  "벤처기업부",
+  "기술성장기업부",
+  "관리종목",
+  "투자주의환기종목",
+]);
+
 export default async function HoldingDetailPage({
   params,
 }: {
@@ -41,7 +51,7 @@ export default async function HoldingDetailPage({
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-3xl font-bold tracking-tight">{displayName}</h1>
           {market && <Badge variant="secondary">{market}</Badge>}
-          {catalog?.sector && (
+          {catalog?.sector && !NON_SECTOR_VALUES.has(catalog.sector) && (
             <Badge variant="outline" className="text-xs">
               {catalog.sector}
             </Badge>
