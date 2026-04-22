@@ -26,6 +26,15 @@ export async function listHoldings(): Promise<HoldingWithLatest[]> {
   if (!holdings || holdings.length === 0) return [];
 
   const tickers = holdings.map((h) => h.ticker);
+
+  // 카탈로그에서 이름 폴백 조회 (holdings.name 이 null 인 경우 대비)
+  const { data: catalog } = await supabase
+    .from("stocks")
+    .select("ticker, name")
+    .in("ticker", tickers);
+  const nameByTicker = new Map<string, string>();
+  for (const c of catalog ?? []) nameByTicker.set(c.ticker, c.name);
+
   const { data: reports } = await supabase
     .from("analysis_reports")
     .select("ticker, recommendation, confidence, created_at")
@@ -50,6 +59,7 @@ export async function listHoldings(): Promise<HoldingWithLatest[]> {
     const latest = latestByTicker.get(h.ticker);
     return {
       ...h,
+      name: h.name ?? nameByTicker.get(h.ticker) ?? null,
       latest_recommendation: latest?.recommendation ?? null,
       latest_confidence: latest?.confidence ?? null,
       latest_analyzed_at: latest?.created_at ?? null,
