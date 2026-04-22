@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 
 import { getCurrentQuote } from "@/lib/kis/client";
 import { upsertSnapshotFromQuote } from "@/lib/market/snapshots";
@@ -8,7 +7,6 @@ import { QuoteCard } from "@/components/quote-card";
 import { AnalyzePanel } from "@/components/analyze-panel";
 import { InvestmentDisclaimer } from "@/components/investment-disclaimer";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export const dynamic = "force-dynamic";
@@ -38,14 +36,7 @@ export default async function HoldingDetailPage({
   const market = catalog?.market ?? null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-10">
-      <Link
-        href="/"
-        className={`${buttonVariants({ variant: "ghost", size: "sm" })} self-start`}
-      >
-        ← 홈
-      </Link>
-
+    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 md:px-6 md:py-10">
       <header className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-3xl font-bold tracking-tight">{displayName}</h1>
