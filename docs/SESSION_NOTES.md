@@ -87,30 +87,41 @@
 
 ## 5. 다음 로드맵 (사용자 확정 순서: 1 → 3 → 4 → 2)
 
-### Step 1. 필터 튜닝 (진행 중)
-- 기준치:
-  - filtered_count **20~30** 이면 적정. `<10` 너무 빡빡, `>50` 너무 느슨.
-  - 3개 pick 이 같은 섹터에 쏠리면 다변화 로직 추가.
-  - confidence 가 전부 low 로만 나오면 기준 완화, 전부 high 면 강화.
-- 조정 후보: `quant_filter()` 의 RSI 하한·상한, `pos_52w` 상한, `vol_ratio` 하한, 리턴 박스.
+### Step 1. 필터 튜닝 (보류)
+- **버그 수정 완료**:
+  - 시가총액 단위 혼동(씨젠 "129억" 오표기) — `format_marcap()` 으로 문자열 변환 후 Claude 전달
+  - `filtered_count` 가 cap(30)에 묶여 항상 ≤30 → cap 제거 + `CLAUDE_CANDIDATE_CAP` 상수로 분리
+- 튜닝은 2~3회 실행 누적 관찰 후 재점검. 무리해서 지금 조정 X.
 
 ### Step 2. (후순위) 스크리너 성과 추적
 - `screener_picks` 의 pick 들을 이후 20일/60일간 추적해 수익률 집계 → 알고리즘 품질 검증.
 - 3~6개월 데이터 쌓인 후에 의미 있는 분석 가능.
 
-### Step 3. 리스크 가드레일 (add-holding 검증)
-- 단일 종목 집중도 >25% 경고.
-- 현금 비중 하한 (예: 포트폴리오의 10% 이상 유지 권장).
-- 직전 N일 급등 종목 추격매수 경고 (예: 5일 수익률 > +15%).
-- **non-blocking 경고** (사용자 override 허용, 단 disclaimer 강화).
+### Step 3. 리스크 가드레일 + Layer 1 모니터링 (완료)
+진입 경고 (`lib/portfolio/guardrails.ts`):
+- 집중도 25% 초과 경고
+- 당일 +5% 이상 급등 → 추격매수 경고
+- 손절선 미설정 안내 + 손절폭 10%+ 과도 경고
 
-### Step 4. 카카오 알림 트리거
+보유 종목 모니터링:
+- `holdingAlertLevel()` — 현재가 vs 손절/익절 근접(±3%)/도달 단계
+- `HoldingRow` 진행바 (손절 ●━━ 현재가 ━━ 익절) + 근접 배지
+- `HoldingAlerts` 대시보드 상단 긴급 배너
+
+스크리너 → 대시보드 연결:
+- PickCard "포트폴리오에 담기" 버튼 → `/dashboard?ticker=...&entry=...&stop=...&take=...&from=screener`
+- AddHoldingForm 에서 URL query 로 자동 채움
+
+### Step 4. 카카오 알림 트리거 (Layer 2, 다음 스텝)
 - `/login` 카카오 "나에게 보내기" 파이프라인에 룰 연결:
   - 손절선 -3% 근접
   - 익절선 도달
   - 일간 -5% 급락
   - 분배락 전일 (ETF)
 - Vercel Cron 또는 GitHub Actions 로 장중·장마감 후 2회 스캔.
+- 중복 발송 방지용 `alerts` 테이블 + (holding_id, type, date) unique.
+- Step 3 에서 이미 `holdingAlertLevel()` 이 pure function 으로 분리돼 있어
+  서버 사이드 스캔에서 그대로 재사용 가능.
 
 ---
 

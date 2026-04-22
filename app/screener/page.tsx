@@ -165,6 +165,22 @@ function PickCard({ pick }: { pick: ScreenerPick }) {
 
           <div className="flex gap-2 pt-1">
             <Link
+              href={{
+                pathname: "/dashboard",
+                query: {
+                  ticker: pick.ticker,
+                  name: pick.name ?? "",
+                  entry: pick.entry_hint ?? "",
+                  stop: pick.stop_loss ?? "",
+                  take: pick.take_profit ?? "",
+                  from: "screener",
+                },
+              }}
+              className={buttonVariants({ variant: "default", size: "sm" })}
+            >
+              포트폴리오에 담기
+            </Link>
+            <Link
               href={`/holdings/${pick.ticker}`}
               className={buttonVariants({ variant: "outline", size: "sm" })}
             >

@@ -5,6 +5,7 @@ import { InvestmentDisclaimer } from "@/components/investment-disclaimer";
 import { AddHoldingForm } from "@/components/add-holding-form";
 import { HoldingRow } from "@/components/holding-row";
 import { PortfolioSummary } from "@/components/portfolio-summary";
+import { HoldingAlerts } from "@/components/holding-alerts";
 import { listHoldings } from "@/lib/holdings";
 import { attachPnL, computeTotals } from "@/lib/portfolio/pnl";
 import { getBenchmarks } from "@/lib/portfolio/benchmarks";
@@ -53,11 +54,13 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      <HoldingAlerts holdings={holdings} />
+
       {holdings.length > 0 && (
         <PortfolioSummary totals={totals} benchmarks={benchmarks} />
       )}
 
-      <AddHoldingForm />
+      <AddHoldingForm portfolioTotalCost={totals.total_cost} />
 
       <Card>
         <CardHeader>
