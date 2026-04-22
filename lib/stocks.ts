@@ -1,9 +1,12 @@
 import { getSupabaseServiceClient } from "@/lib/supabase/client";
 
+export type StockType = "stock" | "etf";
+
 export type StockCatalogRow = {
   ticker: string;
   name: string;
   market: "KOSPI" | "KOSDAQ";
+  type: StockType;
 };
 
 // 이름 또는 티커로 종목 검색. 빈 문자열이면 빈 배열.
@@ -20,7 +23,7 @@ export async function searchStocks(
 
   const builder = supabase
     .from("stocks")
-    .select("ticker, name, market")
+    .select("ticker, name, market, type")
     .limit(limit);
 
   const { data, error } = isTicker
@@ -40,7 +43,7 @@ export async function getStockByTicker(
   const supabase = getSupabaseServiceClient();
   const { data, error } = await supabase
     .from("stocks")
-    .select("ticker, name, market")
+    .select("ticker, name, market, type")
     .eq("ticker", ticker)
     .maybeSingle();
 

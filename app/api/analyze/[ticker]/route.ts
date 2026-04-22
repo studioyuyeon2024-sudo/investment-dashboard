@@ -4,6 +4,7 @@ import { z } from "zod";
 import { analyzeTicker } from "@/lib/claude/client";
 import { getCurrentQuote } from "@/lib/kis/client";
 import { upsertSnapshotFromQuote } from "@/lib/market/snapshots";
+import { getStockByTicker } from "@/lib/stocks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,10 +38,15 @@ export async function POST(
       });
     }
 
+    // 카탈로그에서 종목 타입 조회 — ETF 면 별도 프롬프트 사용. 실패 시 stock 으로 간주.
+    const catalog = await getStockByTicker(parsed.data).catch(() => null);
+    const stockType = catalog?.type ?? "stock";
+
     const outcome = await analyzeTicker({
       ticker: parsed.data,
       reportType,
       taskType,
+      stockType,
       marketData: {
         price: quote.price,
         change: quote.change,

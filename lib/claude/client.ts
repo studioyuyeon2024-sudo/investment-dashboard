@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   BASE_SYSTEM_PROMPT,
+  ETF_SYSTEM_PROMPT,
   type AnalysisResult,
   type Confidence,
   type Recommendation,
@@ -9,6 +10,7 @@ import { buildDataHash, getCachedReport, saveReport } from "./cache";
 import { selectModel, type ClaudeModelId, type TaskType } from "./router";
 import { logUsage } from "./usage";
 import { calculateCost } from "@/lib/utils/cost";
+import type { StockType } from "@/lib/stocks";
 import type { ReportType } from "@/types";
 
 let client: Anthropic | null = null;
@@ -28,6 +30,7 @@ export type AnalyzeParams = {
   reportType: ReportType;
   taskType: TaskType;
   marketData: Record<string, unknown>;
+  stockType?: StockType;
   userId?: string | null;
   maxTokens?: number;
 };
@@ -62,6 +65,8 @@ export async function analyzeTicker(
   const model = selectModel(params.taskType);
   const maxTokens = params.maxTokens ?? 600;
 
+  const systemPrompt =
+    params.stockType === "etf" ? ETF_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT;
   const userMessage = buildUserMessage(params.ticker, params.marketData);
   const anthropic = getClient();
 
@@ -71,7 +76,7 @@ export async function analyzeTicker(
     system: [
       {
         type: "text",
-        text: BASE_SYSTEM_PROMPT,
+        text: systemPrompt,
         cache_control: { type: "ephemeral" },
       },
     ],
