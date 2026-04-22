@@ -4,17 +4,21 @@ import { buttonVariants } from "@/components/ui/button";
 import { InvestmentDisclaimer } from "@/components/investment-disclaimer";
 import { AddHoldingForm } from "@/components/add-holding-form";
 import { HoldingRow } from "@/components/holding-row";
+import { PortfolioSummary } from "@/components/portfolio-summary";
 import { listHoldings } from "@/lib/holdings";
-import { formatPrice } from "@/lib/format";
+import { attachPnL, computeTotals } from "@/lib/portfolio/pnl";
+import { getBenchmarks } from "@/lib/portfolio/benchmarks";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const holdings = await listHoldings();
-  const totalCost = holdings.reduce(
-    (sum, h) => sum + h.avg_price * h.quantity,
-    0,
-  );
+  const rawHoldings = await listHoldings();
+  // 시세·벤치마크 병렬 조회 — 실패해도 UI 에서 부분 폴백으로 처리됨
+  const [holdings, benchmarks] = await Promise.all([
+    attachPnL(rawHoldings),
+    getBenchmarks(),
+  ]);
+  const totals = computeTotals(holdings);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 px-6 py-10">
@@ -24,7 +28,7 @@ export default async function DashboardPage() {
             내 포트폴리오
           </h1>
           <p className="text-sm text-muted-foreground">
-            보유 종목 {holdings.length}개 · 총 원가 {formatPrice(totalCost)}원
+            보유 종목 {holdings.length}개
           </p>
         </div>
         <div className="flex gap-2">
@@ -42,6 +46,10 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {holdings.length > 0 && (
+        <PortfolioSummary totals={totals} benchmarks={benchmarks} />
+      )}
 
       <AddHoldingForm />
 
