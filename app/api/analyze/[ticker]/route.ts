@@ -44,6 +44,7 @@ export async function POST(
 
     const outcome = await analyzeTicker({
       ticker: parsed.data,
+      name: catalog?.name ?? null,
       reportType,
       taskType,
       stockType,

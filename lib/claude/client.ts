@@ -27,6 +27,7 @@ function getClient(): Anthropic {
 
 export type AnalyzeParams = {
   ticker: string;
+  name?: string | null;
   reportType: ReportType;
   taskType: TaskType;
   marketData: Record<string, unknown>;
@@ -67,7 +68,12 @@ export async function analyzeTicker(
 
   const systemPrompt =
     params.stockType === "etf" ? ETF_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT;
-  const userMessage = buildUserMessage(params.ticker, params.marketData);
+  const userMessage = buildUserMessage(
+    params.ticker,
+    params.name ?? null,
+    params.stockType ?? "stock",
+    params.marketData,
+  );
   const anthropic = getClient();
 
   const response = await anthropic.messages.create({
@@ -122,9 +128,23 @@ export async function analyzeTicker(
 
 function buildUserMessage(
   ticker: string,
+  name: string | null,
+  stockType: StockType,
   marketData: Record<string, unknown>,
 ): string {
-  return `종목: ${ticker}\n\n시장 데이터:\n${JSON.stringify(marketData, null, 2)}\n\n위 데이터를 분석하여 지정된 JSON 형식으로만 응답하세요. JSON 외 다른 텍스트는 포함하지 마세요.`;
+  // 티커만 주면 Claude 가 종목명을 자기 학습 기억으로 추측(할루시네이션)해
+  // 엉뚱한 이름을 본문에 쓰는 사고가 난다. 카탈로그에서 온 이름을 명시.
+  const header = name
+    ? `종목: ${name} (${ticker}) · ${stockType === "etf" ? "ETF" : "개별주식"}`
+    : `종목: ${ticker} · ${stockType === "etf" ? "ETF" : "개별주식"}`;
+  return `${header}
+
+시장 데이터:
+${JSON.stringify(marketData, null, 2)}
+
+주의: 본문에 종목명을 언급할 땐 반드시 위 "종목:" 필드의 이름을 그대로 사용하세요. 다른 종목명으로 치환하지 마세요.
+
+위 데이터를 분석하여 지정된 JSON 형식으로만 응답하세요. JSON 외 다른 텍스트는 포함하지 마세요.`;
 }
 
 function extractText(response: Anthropic.Messages.Message): string {
