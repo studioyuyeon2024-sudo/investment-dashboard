@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -177,6 +178,7 @@ export function AddHoldingForm({
           };
           throw new Error(body.error ?? `HTTP ${res.status}`);
         }
+        const addedName = name.trim() || ticker;
         setQuery("");
         setTicker("");
         setName("");
@@ -188,8 +190,16 @@ export function AddHoldingForm({
         setPrefilledFrom(null);
         router.refresh();
         onSuccess?.();
+        toast.success(`${addedName} 추가 완료`, {
+          description:
+            stopLoss || targetPrice
+              ? "손절/익절 근접 시 카카오톡 알림이 옵니다."
+              : "손절·익절선을 설정하면 자동 알림을 받을 수 있어요.",
+        });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "추가 실패");
+        const msg = err instanceof Error ? err.message : "추가 실패";
+        setError(msg);
+        toast.error("종목 추가 실패", { description: msg });
       }
     });
   };

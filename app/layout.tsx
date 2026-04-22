@@ -4,6 +4,7 @@ import "./globals.css";
 
 import { AppHeader } from "@/components/app-shell/app-header";
 import { BottomNav } from "@/components/app-shell/bottom-nav";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,7 @@ export default function RootLayout({
         {/* 하단 탭바(모바일) 가 콘텐츠를 가리지 않도록 여백 */}
         <div className="flex-1 pb-20 md:pb-0">{children}</div>
         <BottomNav />
+        <Toaster position="top-center" />
       </body>
     </html>
   );

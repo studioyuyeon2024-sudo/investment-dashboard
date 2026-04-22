@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -85,10 +86,22 @@ export function ScreenerPickCard({ pick }: { pick: ScreenerPick }) {
           };
           throw new Error(body.error ?? `HTTP ${res.status}`);
         }
+        const name = pick.name || pick.ticker;
+        if (next) {
+          toast.success(`${name} 관심 등록`, {
+            description:
+              "진입가 ±2% 도달 · 손절선 통과 · 7일 만료 시 카카오톡 알림이 옵니다.",
+          });
+        } else {
+          toast(`${name} 관심 해제`, { description: "더 이상 알림을 보내지 않습니다." });
+        }
         router.refresh();
       } catch (err) {
         setWatching(!next); // 롤백
         setError(err instanceof Error ? err.message : "토글 실패");
+        toast.error("관심 토글 실패", {
+          description: err instanceof Error ? err.message : undefined,
+        });
       }
     });
   };
@@ -158,6 +171,11 @@ export function ScreenerPickCard({ pick }: { pick: ScreenerPick }) {
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <Link
+              onClick={() =>
+                toast("대시보드로 이동", {
+                  description: "폼이 자동으로 열려 있고 값이 채워져 있어요.",
+                })
+              }
               href={{
                 pathname: "/dashboard",
                 query: {
