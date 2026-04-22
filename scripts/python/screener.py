@@ -192,6 +192,24 @@ def compute_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     return 100 - (100 / (1 + rs))
 
 
+def _safe_pct(numerator: float, denominator: float) -> float | None:
+    """백분율 변화 계산. 분모가 0 또는 NaN 이면 None."""
+    if denominator is None or not np.isfinite(denominator) or denominator == 0:
+        return None
+    result = (numerator - denominator) / denominator * 100
+    return float(result) if np.isfinite(result) else None
+
+
+def _safe_float(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if np.isfinite(f) else None
+
+
 def build_features(
     ticker: str,
     name: str,
@@ -200,7 +218,7 @@ def build_features(
     sector: str | None,
     df: pd.DataFrame,
 ) -> CandidateFeatures | None:
-    """FDR OHLCV DataFrame 으로부터 지표 추출. 데이터 부족 시 None."""
+    """FDR OHLCV DataFrame 으로부터 지표 추출. 데이터 부족/이상 시 None."""
     if df is None or df.empty or len(df) < 65:
         return None
 
@@ -212,38 +230,67 @@ def build_features(
     ma20 = close.rolling(20).mean()
     ma60 = close.rolling(60).mean()
 
-    last = close.iloc[-1]
-    if last <= 0:
+    last = _safe_float(close.iloc[-1])
+    if last is None or last <= 0:
+        return None
+
+    ma5_last = _safe_float(ma5.iloc[-1])
+    ma20_last = _safe_float(ma20.iloc[-1])
+    ma60_last = _safe_float(ma60.iloc[-1])
+    rsi_last = _safe_float(rsi.iloc[-1])
+
+    # 이동평균 기준값이 없거나 0 이면 이 종목 탈락 — 거래정지·신규상장 가능성
+    if ma5_last is None or ma20_last is None or ma60_last is None:
+        return None
+
+    ma5_gap = _safe_pct(last, ma5_last)
+    ma20_gap = _safe_pct(last, ma20_last)
+    ma60_gap = _safe_pct(last, ma60_last)
+    if ma5_gap is None or ma20_gap is None or ma60_gap is None:
         return None
 
     window = close.iloc[-252:] if len(close) >= 252 else close
-    hi = window.max()
-    lo = window.min()
-    pos_52w = (last - lo) / (hi - lo) if hi > lo else 0.5
+    hi = _safe_float(window.max())
+    lo = _safe_float(window.min())
+    pos_52w = (last - lo) / (hi - lo) if (hi is not None and lo is not None and hi > lo) else 0.5
 
-    vol_5 = volume.tail(5).mean()
-    vol_20 = volume.tail(20).mean()
-    vol_ratio = float(vol_5 / vol_20) if vol_20 > 0 else 0.0
+    vol_5 = _safe_float(volume.tail(5).mean()) or 0.0
+    vol_20 = _safe_float(volume.tail(20).mean()) or 0.0
+    vol_ratio = vol_5 / vol_20 if vol_20 > 0 else 0.0
+
+    ret_5d = (
+        _safe_pct(last, _safe_float(close.iloc[-6]) or 0)
+        if len(close) > 5
+        else 0.0
+    )
+    ret_20d = (
+        _safe_pct(last, _safe_float(close.iloc[-21]) or 0)
+        if len(close) > 20
+        else 0.0
+    )
+
+    # 섹터 문자열 정규화 (numpy NaN 대응)
+    sector_clean: str | None = None
+    if sector is not None:
+        s = str(sector).strip()
+        if s and s.lower() not in {"nan", "none", "-"}:
+            sector_clean = s
 
     return CandidateFeatures(
         ticker=ticker,
         name=name,
         market=market,
-        sector=sector,
-        close=float(last),
-        rsi_14=float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0,
-        ma5_gap_pct=float((last - ma5.iloc[-1]) / ma5.iloc[-1] * 100),
-        ma20_gap_pct=float((last - ma20.iloc[-1]) / ma20.iloc[-1] * 100),
-        ma60_gap_pct=float((last - ma60.iloc[-1]) / ma60.iloc[-1] * 100),
+        sector=sector_clean,
+        close=last,
+        rsi_14=rsi_last if rsi_last is not None else 50.0,
+        ma5_gap_pct=ma5_gap,
+        ma20_gap_pct=ma20_gap,
+        ma60_gap_pct=ma60_gap,
         volume_ratio_5_20=round(vol_ratio, 2),
         pos_52w=round(float(pos_52w), 3),
-        return_5d_pct=float((last - close.iloc[-6]) / close.iloc[-6] * 100)
-        if len(close) > 5
-        else 0.0,
-        return_20d_pct=float((last - close.iloc[-21]) / close.iloc[-21] * 100)
-        if len(close) > 20
-        else 0.0,
-        marcap=round(marcap, 1),
+        return_5d_pct=ret_5d if ret_5d is not None else 0.0,
+        return_20d_pct=ret_20d if ret_20d is not None else 0.0,
+        marcap=round(float(marcap), 1) if marcap is not None and np.isfinite(marcap) else 0.0,
     )
 
 
@@ -357,6 +404,27 @@ def estimate_cost_usd(usage: dict) -> float:
     return round(input_cost + cache_cost + output_cost, 6)
 
 
+def _clean_nan(obj):
+    """JSON 인코더(allow_nan=False) 가 거부하는 NaN/Inf 를 None 으로 변환.
+    dict/list 재귀. numpy 타입은 native 로 변환."""
+    import math
+
+    if isinstance(obj, dict):
+        return {k: _clean_nan(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_clean_nan(v) for v in obj]
+    if isinstance(obj, float):
+        return None if math.isnan(obj) or math.isinf(obj) else obj
+    # numpy scalar 계열도 체크
+    if hasattr(obj, "item"):
+        try:
+            val = obj.item()
+        except Exception:
+            return obj
+        return _clean_nan(val)
+    return obj
+
+
 def supabase_post(url: str, key: str, path: str, body) -> dict:
     resp = requests.post(
         f"{url}/rest/v1/{path}",
@@ -366,7 +434,7 @@ def supabase_post(url: str, key: str, path: str, body) -> dict:
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         },
-        json=body,
+        json=_clean_nan(body),
         timeout=30,
     )
     if resp.status_code >= 300:
@@ -383,7 +451,7 @@ def supabase_patch(url: str, key: str, path: str, body) -> None:
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
         },
-        json=body,
+        json=_clean_nan(body),
         timeout=30,
     )
     if resp.status_code >= 300:
