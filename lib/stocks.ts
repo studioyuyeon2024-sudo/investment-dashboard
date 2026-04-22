@@ -7,6 +7,7 @@ export type StockCatalogRow = {
   name: string;
   market: "KOSPI" | "KOSDAQ";
   type: StockType;
+  sector: string | null;
 };
 
 // 이름 또는 티커로 종목 검색. 빈 문자열이면 빈 배열.
@@ -23,7 +24,7 @@ export async function searchStocks(
 
   const builder = supabase
     .from("stocks")
-    .select("ticker, name, market, type")
+    .select("ticker, name, market, type, sector")
     .limit(limit);
 
   const { data, error } = isTicker
@@ -43,7 +44,7 @@ export async function getStockByTicker(
   const supabase = getSupabaseServiceClient();
   const { data, error } = await supabase
     .from("stocks")
-    .select("ticker, name, market, type")
+    .select("ticker, name, market, type, sector")
     .eq("ticker", ticker)
     .maybeSingle();
 

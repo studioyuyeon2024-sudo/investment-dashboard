@@ -47,6 +47,23 @@ def _resolve_columns(df) -> tuple[str, str] | None:
     return code_col, name_col
 
 
+def _resolve_sector_column(df) -> str | None:
+    # FDR 버전·시장별로 섹터 컬럼명이 상이. 사용 가능한 첫 번째를 채택.
+    for c in ("Sector", "Industry", "Dept", "업종", "업종명"):
+        if c in df.columns:
+            return c
+    return None
+
+
+def _clean_sector(value) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s or s.lower() in {"nan", "none", "-", "n/a"}:
+        return None
+    return s
+
+
 def fetch_market(market: str) -> list[dict]:
     df = fdr.StockListing(market)
     if df is None or df.empty:
@@ -56,6 +73,7 @@ def fetch_market(market: str) -> list[dict]:
     if cols is None:
         return []
     code_col, name_col = cols
+    sector_col = _resolve_sector_column(df)
 
     rows: list[dict] = []
     seen: set[str] = set()
@@ -64,9 +82,17 @@ def fetch_market(market: str) -> list[dict]:
         name = str(row[name_col]).strip()
         if not ticker or not name or ticker in seen:
             continue
-        # 우선주, SPAC 등을 굳이 걸러내지 않음 — 사용자가 보유할 수 있음
+        sector = _clean_sector(row[sector_col]) if sector_col else None
         seen.add(ticker)
-        rows.append({"ticker": ticker, "name": name, "market": market, "type": "stock"})
+        rows.append(
+            {
+                "ticker": ticker,
+                "name": name,
+                "market": market,
+                "type": "stock",
+                "sector": sector,
+            }
+        )
     return rows
 
 
@@ -145,7 +171,11 @@ def main() -> None:
             r["type"] = "etf"
 
     etf_count = sum(1 for r in rows if r["type"] == "etf")
-    print(f"총 {len(rows)}개 upsert 시작 (ETF {etf_count}개 포함)…")
+    sector_count = sum(1 for r in rows if r.get("sector"))
+    print(
+        f"총 {len(rows)}개 upsert 시작 "
+        f"(ETF {etf_count}개 · 섹터 태그 {sector_count}개 포함)…"
+    )
     upsert(rows, url, key)
     print("완료")
 

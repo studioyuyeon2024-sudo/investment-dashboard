@@ -41,6 +41,11 @@ export default async function HoldingDetailPage({
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-3xl font-bold tracking-tight">{displayName}</h1>
           {market && <Badge variant="secondary">{market}</Badge>}
+          {catalog?.sector && (
+            <Badge variant="outline" className="text-xs">
+              {catalog.sector}
+            </Badge>
+          )}
         </div>
         <p className="font-mono text-sm text-muted-foreground">{ticker}</p>
       </header>

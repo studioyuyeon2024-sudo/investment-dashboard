@@ -120,6 +120,14 @@ export function ScreenerPickCard({ pick }: { pick: ScreenerPick }) {
                 {pick.ticker}
               </span>
             </CardTitle>
+            {typeof pick.indicators === "object" &&
+              pick.indicators !== null &&
+              typeof (pick.indicators as Record<string, unknown>).sector ===
+                "string" && (
+                <span className="rounded-full border border-dashed px-2 py-0.5 text-[10px] text-muted-foreground">
+                  {(pick.indicators as { sector: string }).sector}
+                </span>
+              )}
             {statusBadge && (
               <span
                 className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusBadge.className}`}
