@@ -16,9 +16,26 @@ from __future__ import annotations
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import requests
 from pykrx import stock
+
+
+def load_env_local() -> None:
+    """프로젝트 루트의 .env.local 을 환경변수로 로드 (이미 설정된 값은 유지)."""
+    root = Path(__file__).resolve().parents[2]
+    env_file = root / ".env.local"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
 
 
 def fetch_market(market: str) -> list[dict]:
@@ -60,6 +77,8 @@ def upsert(rows: list[dict]) -> None:
 
 
 def main() -> None:
+    load_env_local()
+
     print("KOSPI 종목 수집 중…")
     kospi = fetch_market("KOSPI")
     print(f"  KOSPI {len(kospi)}개")
