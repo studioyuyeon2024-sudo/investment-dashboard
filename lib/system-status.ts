@@ -36,8 +36,10 @@ const SERVICES: ServiceConfig[] = [
   {
     key: "kis",
     label: "한국투자증권",
-    description: "실시간 KRX 시세",
-    envVars: ["KIS_APP_KEY", "KIS_APP_SECRET", "KIS_ACCOUNT_NUMBER"],
+    description: "실시간 KRX 시세 (주문 기능은 미구현)",
+    // 시세·일봉 조회만 하므로 APP_KEY/APP_SECRET 만 필수.
+    // ACCOUNT_NUMBER 는 주문·잔고 조회 시 필요하나 본 프로젝트는 자동 매매 미지원.
+    envVars: ["KIS_APP_KEY", "KIS_APP_SECRET"],
     required: true,
   },
   {
