@@ -1,0 +1,32 @@
+name: Load KRX Stocks Catalog
+
+# 월 1회 자동 실행 + 필요할 때 GitHub UI에서 수동 실행 가능
+on:
+  schedule:
+    # 매월 1일 23:00 UTC = 한국시간 매월 2일 08:00
+    - cron: "0 23 1 * *"
+  workflow_dispatch: {}
+
+jobs:
+  load-stocks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: scripts/python/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r scripts/python/requirements.txt
+
+      - name: Run loader
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scripts/python/load_stocks.py
