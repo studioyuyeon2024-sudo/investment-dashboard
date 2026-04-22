@@ -1,0 +1,33 @@
+name: Screener (Medium Swing)
+
+# 주 2회 — 월/목 장 마감 후 실행
+# KST 15:30 (장마감) 이후 16:00 KST = 07:00 UTC
+on:
+  schedule:
+    - cron: "0 7 * * 1,4"  # 매주 월/목 07:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  screener:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: scripts/python/requirements-screener.txt
+
+      - name: Install dependencies
+        run: pip install -r scripts/python/requirements-screener.txt
+
+      - name: Run screener
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/python/screener.py
