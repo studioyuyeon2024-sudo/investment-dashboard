@@ -86,6 +86,13 @@ def main() -> None:
     load_env_local()
     url, key = require_supabase_env()
 
+    if not os.environ.get("KRX_ID") or not os.environ.get("KRX_PW"):
+        print(
+            "환경변수 KRX_ID / KRX_PW 필요 — http://data.krx.co.kr 회원가입 후 등록",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     print("KOSPI 종목 수집 중…")
     kospi = fetch_market("KOSPI")
     print(f"  KOSPI {len(kospi)}개")
