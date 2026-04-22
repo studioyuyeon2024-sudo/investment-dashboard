@@ -113,3 +113,76 @@ export async function deleteHolding(id: string): Promise<void> {
     throw new Error(`holding 삭제 실패: ${error.message}`);
   }
 }
+
+export type UpdateHoldingInput = {
+  avg_price?: number;
+  quantity?: number;
+  target_price?: number | null;
+  stop_loss?: number | null;
+  notes?: string | null;
+};
+
+export async function updateHolding(
+  id: string,
+  input: UpdateHoldingInput,
+): Promise<Holding> {
+  const supabase = getSupabaseServiceClient();
+  const patch: Record<string, unknown> = {};
+  if (input.avg_price !== undefined) patch.avg_price = input.avg_price;
+  if (input.quantity !== undefined) patch.quantity = input.quantity;
+  if (input.target_price !== undefined) patch.target_price = input.target_price;
+  if (input.stop_loss !== undefined) patch.stop_loss = input.stop_loss;
+  if (input.notes !== undefined) patch.notes = input.notes;
+
+  if (Object.keys(patch).length === 0) {
+    throw new Error("수정할 필드가 없습니다");
+  }
+
+  const { data, error } = await supabase
+    .from("holdings")
+    .update(patch)
+    .eq("id", id)
+    .eq("portfolio_id", DEFAULT_PORTFOLIO_ID)
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(`holding 수정 실패: ${error.message}`);
+  }
+  return data as Holding;
+}
+
+// 추매: 기존 포지션에 수량·가격을 더해 가중 평단 재계산.
+export async function addToHolding(
+  id: string,
+  add: { additional_quantity: number; purchase_price: number },
+): Promise<Holding> {
+  if (add.additional_quantity <= 0) {
+    throw new Error("추매 수량은 0 보다 커야 합니다");
+  }
+  if (add.purchase_price <= 0) {
+    throw new Error("추매 가격은 0 보다 커야 합니다");
+  }
+  const supabase = getSupabaseServiceClient();
+
+  const { data: current, error: readError } = await supabase
+    .from("holdings")
+    .select("avg_price, quantity")
+    .eq("id", id)
+    .eq("portfolio_id", DEFAULT_PORTFOLIO_ID)
+    .single();
+  if (readError || !current) {
+    throw new Error(`holding 조회 실패: ${readError?.message ?? "not found"}`);
+  }
+
+  const newQuantity = current.quantity + add.additional_quantity;
+  const newCost =
+    current.avg_price * current.quantity +
+    add.purchase_price * add.additional_quantity;
+  const newAvg = newCost / newQuantity;
+
+  return updateHolding(id, {
+    avg_price: Math.round(newAvg * 100) / 100,
+    quantity: newQuantity,
+  });
+}

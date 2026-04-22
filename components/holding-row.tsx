@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDownIcon } from "lucide-react";
+import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { EditHoldingSheet } from "@/components/edit-holding-sheet";
 import type { HoldingWithPnL } from "@/lib/portfolio/pnl";
 import { changeColorClass, formatPrice } from "@/lib/format";
 import {
@@ -50,11 +52,13 @@ const ALERT_BADGE: Record<
 export function HoldingRow({ holding }: { holding: HoldingWithPnL }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const name = holding.name ?? holding.ticker;
 
   const del = () => {
-    if (!confirm(`${holding.name ?? holding.ticker} 를 삭제하시겠어요?`)) return;
+    if (!confirm(`${name} 를 삭제하시겠어요?`)) return;
     setError(null);
     startTransition(async () => {
       try {
@@ -65,9 +69,12 @@ export function HoldingRow({ holding }: { holding: HoldingWithPnL }) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(body.error ?? `HTTP ${res.status}`);
         }
+        toast(`${name} 삭제됨`);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "삭제 실패");
+        const msg = err instanceof Error ? err.message : "삭제 실패";
+        setError(msg);
+        toast.error("삭제 실패", { description: msg });
       }
     });
   };
@@ -236,15 +243,24 @@ export function HoldingRow({ holding }: { holding: HoldingWithPnL }) {
           )}
           {error && <p className="text-destructive">{error}</p>}
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditOpen(true);
+              }}
+            >
+              + 추매 / ✎ 수정
+            </Button>
             <Link
               href={`/holdings/${holding.ticker}`}
-              className={buttonVariants({ variant: "default", size: "sm" })}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
             >
               상세 분석
             </Link>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={del}
               disabled={isPending}
@@ -254,6 +270,12 @@ export function HoldingRow({ holding }: { holding: HoldingWithPnL }) {
           </div>
         </div>
       )}
+
+      <EditHoldingSheet
+        holding={holding}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+      />
     </li>
   );
 }
