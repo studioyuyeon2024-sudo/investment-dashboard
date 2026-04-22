@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  computeEntryGuardrails,
+  type GuardrailWarning,
+} from "@/lib/portfolio/guardrails";
 
 type StockSuggestion = {
   ticker: string;
@@ -13,8 +17,13 @@ type StockSuggestion = {
   market: "KOSPI" | "KOSDAQ";
 };
 
-export function AddHoldingForm() {
+type Props = {
+  portfolioTotalCost: number;
+};
+
+export function AddHoldingForm({ portfolioTotalCost }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [ticker, setTicker] = useState("");
   const [name, setName] = useState("");
@@ -24,9 +33,31 @@ export function AddHoldingForm() {
   const [quantity, setQuantity] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
+  const [changeRate, setChangeRate] = useState<number | null>(null);
+  const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const abortRef = useRef<AbortController | null>(null);
+  const prefillAppliedRef = useRef(false);
+
+  // 스크리너에서 "담기" 로 넘어온 경우 URL query 로 pre-fill.
+  useEffect(() => {
+    if (prefillAppliedRef.current) return;
+    const t = searchParams.get("ticker");
+    if (!t || !/^[0-9A-Z]{6}$/.test(t)) return;
+    const n = searchParams.get("name") ?? "";
+    const entry = searchParams.get("entry");
+    const stop = searchParams.get("stop");
+    const take = searchParams.get("take");
+    setTicker(t);
+    setName(n);
+    setQuery(n ? `${n} (${t})` : t);
+    if (entry) setAvgPrice(entry);
+    if (stop) setStopLoss(stop);
+    if (take) setTargetPrice(take);
+    setPrefilledFrom(searchParams.get("from") ?? "screener");
+    prefillAppliedRef.current = true;
+  }, [searchParams]);
 
   // 입력 디바운스 검색 (200ms)
   useEffect(() => {
@@ -54,12 +85,64 @@ export function AddHoldingForm() {
     return () => clearTimeout(t);
   }, [query]);
 
+  // 티커 확정 시 당일 시세 조회 — 급등 경고 판단용.
+  useEffect(() => {
+    if (!/^[0-9A-Z]{6}$/.test(ticker)) {
+      setChangeRate(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/market/quote/${ticker}`);
+        if (!res.ok) return;
+        const body = (await res.json()) as { change_rate?: number };
+        if (!cancelled && typeof body.change_rate === "number") {
+          setChangeRate(body.change_rate);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ticker]);
+
   const pick = (s: StockSuggestion) => {
     setTicker(s.ticker);
     setName(s.name);
     setQuery(`${s.name} (${s.ticker})`);
     setShowSuggest(false);
   };
+
+  const newCost = useMemo(() => {
+    const a = Number(avgPrice);
+    const q = Number(quantity);
+    return Number.isFinite(a) && Number.isFinite(q) && a > 0 && q > 0
+      ? a * q
+      : 0;
+  }, [avgPrice, quantity]);
+
+  const warnings: GuardrailWarning[] = useMemo(() => {
+    if (!ticker || newCost === 0) return [];
+    return computeEntryGuardrails({
+      existing_total_cost: portfolioTotalCost,
+      new_cost: newCost,
+      new_change_rate: changeRate,
+      avg_price: Number(avgPrice) || null,
+      stop_loss: stopLoss ? Number(stopLoss) : null,
+      take_profit: targetPrice ? Number(targetPrice) : null,
+    });
+  }, [
+    ticker,
+    newCost,
+    portfolioTotalCost,
+    changeRate,
+    avgPrice,
+    stopLoss,
+    targetPrice,
+  ]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +179,7 @@ export function AddHoldingForm() {
         setStopLoss("");
         setTargetPrice("");
         setSuggestions([]);
+        setPrefilledFrom(null);
         router.refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "추가 실패");
@@ -105,7 +189,14 @@ export function AddHoldingForm() {
 
   return (
     <form onSubmit={submit} className="space-y-3 rounded-lg border p-4">
-      <h2 className="text-sm font-semibold">종목 추가</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold">종목 추가</h2>
+        {prefilledFrom === "screener" && ticker && (
+          <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400">
+            스크리너에서 가져옴 · 값 수정 가능
+          </span>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Field label="종목 검색 (이름/티커)" htmlFor="stock-search">
           <div className="relative">
@@ -199,6 +290,26 @@ export function AddHoldingForm() {
         <p className="text-xs text-muted-foreground">
           선택된 종목: <span className="font-medium">{name}</span> ({ticker})
         </p>
+      )}
+
+      {warnings.length > 0 && (
+        <ul className="space-y-1.5">
+          {warnings.map((w, i) => (
+            <li
+              key={i}
+              className={`rounded-md border px-3 py-2 text-xs ${
+                w.severity === "warn"
+                  ? "border-amber-500/40 bg-amber-500/5 text-amber-900 dark:text-amber-200"
+                  : "border-border bg-muted/40 text-muted-foreground"
+              }`}
+            >
+              <span className="mr-1 font-medium">
+                {w.severity === "warn" ? "⚠ 경고 ·" : "ℹ 안내 ·"}
+              </span>
+              {w.message}
+            </li>
+          ))}
+        </ul>
       )}
 
       {error && (
