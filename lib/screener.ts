@@ -1,5 +1,13 @@
 import { getSupabaseServiceClient } from "@/lib/supabase/client";
 
+export type PickStatus =
+  | "active"
+  | "triggered"
+  | "invalidated"
+  | "expired"
+  | "entered"
+  | "superseded";
+
 export type ScreenerPick = {
   id: string;
   ticker: string;
@@ -12,6 +20,9 @@ export type ScreenerPick = {
   risks: string[];
   confidence: "high" | "medium" | "low" | null;
   indicators: Record<string, unknown> | null;
+  status: PickStatus;
+  watching: boolean;
+  valid_until: string | null;
 };
 
 export type ScreenerRun = {
@@ -50,7 +61,7 @@ export async function getLatestScreenerRun(): Promise<ScreenerRun | null> {
   const { data: picks, error: pickErr } = await supabase
     .from("screener_picks")
     .select(
-      "id, ticker, name, rank, entry_hint, stop_loss, take_profit, thesis, risks, confidence, indicators",
+      "id, ticker, name, rank, entry_hint, stop_loss, take_profit, thesis, risks, confidence, indicators, status, watching, valid_until",
     )
     .eq("run_id", run.id)
     .order("rank", { ascending: true });
