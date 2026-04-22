@@ -337,6 +337,22 @@ def supabase_post(url: str, key: str, path: str, body) -> dict:
     return resp.json()
 
 
+def supabase_patch(url: str, key: str, path: str, body) -> None:
+    """Filter 는 path 에 query string 으로 포함 (PostgREST 규약)."""
+    resp = requests.patch(
+        f"{url}/rest/v1/{path}",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        json=body,
+        timeout=30,
+    )
+    if resp.status_code >= 300:
+        raise RuntimeError(f"Supabase PATCH {path} 실패 ({resp.status_code}): {resp.text}")
+
+
 def save_run(
     url: str,
     key: str,
@@ -366,6 +382,10 @@ def save_run(
     return rows[0]["id"]
 
 
+# 픽 유효 기간: 5 영업일 ≈ 달력 7일. 만료 후엔 cron 이 status='expired' 처리.
+PICK_VALID_DAYS = 7
+
+
 def save_picks(
     url: str,
     key: str,
@@ -373,6 +393,22 @@ def save_picks(
     picks: list[dict],
     features_by_ticker: dict[str, CandidateFeatures],
 ) -> None:
+    new_tickers = sorted(
+        {str(p.get("ticker", "")).zfill(6) for p in picks if p.get("ticker")}
+    )
+
+    # 동일 ticker 가 새 run 에서 또 추천되면 기존 active 를 superseded 로 정리.
+    # (사용자가 watching 상태였더라도 새 픽이 더 신뢰할 수 있는 thesis.)
+    if new_tickers:
+        ticker_list = ",".join(new_tickers)
+        supabase_patch(
+            url,
+            key,
+            f"screener_picks?status=eq.active&ticker=in.({ticker_list})",
+            {"status": "superseded"},
+        )
+
+    valid_until = (datetime.now().date() + timedelta(days=PICK_VALID_DAYS)).isoformat()
     rows = []
     for i, p in enumerate(picks, start=1):
         t = str(p.get("ticker", "")).zfill(6)
@@ -390,6 +426,8 @@ def save_picks(
                 "risks": p.get("risks") or [],
                 "confidence": p.get("confidence"),
                 "indicators": asdict(f) if f else None,
+                "status": "active",
+                "valid_until": valid_until,
             }
         )
     if rows:

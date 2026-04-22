@@ -170,6 +170,46 @@
 6. `lib/claude/prompts.ts` — 시스템 프롬프트
 7. 최근 `git log` — 직전 작업
 
+### Step 5. 스크리너 픽 후속관리 (관심 토글 + 자동 만료, 완료)
+
+문제: 픽이 다음 날 가격이 변하면 thesis 가 무너지거나, 진입 안 했는데 진입가 도달해도 알 길 없음.
+
+해결:
+- `supabase/migrations/009_pick_followup.sql`
+  - `screener_picks` 에 status/watching/valid_until/last_evaluated_at/entered_at 컬럼
+  - alerts 테이블에 pick_id + 신규 타입 (pick_entry_ready / pick_invalidated / pick_expired)
+  - alerts unique 키를 (ticker, type, alert_date) 로 통합 — holding/pick 공유
+- `scripts/python/screener.py`
+  - save_picks 가 `valid_until = today + 7 days` 부여
+  - 동일 ticker 가 새 run 에 또 들어오면 기존 active 픽을 supersede
+- `lib/screener/follow-up.ts`: `evaluatePick()` pure function
+  - 보유 종목과 매치되면 → entered (자동 정리)
+  - valid_until 지나면 → expired
+  - 손절선 통과 → invalidated
+  - 진입가 ±2% 도달 → triggered
+- `lib/alerts/sender.ts`: `sendPickAlert()` 추가, 신규 타입 3종 카카오 메시지
+- `app/api/cron/price-monitor/route.ts`:
+  - 보유 종목 스캔 후 watching=true && status=active 픽 스캔
+  - quote cache 공유로 KIS 호출 중복 회피
+  - status 전이 + 알림 dedup + 카카오 발송
+- `app/api/screener/picks/[pickId]/watch/route.ts`: 관심 토글 endpoint
+- `components/screener-pick-card.tsx`:
+  - "★ 관심" 토글 버튼 (낙관적 업데이트 + 롤백)
+  - 상태 배지 (진입 도달 / Thesis 무너짐 / 기간 만료 / 포트 추가됨 / 재추천 갱신)
+  - active 픽엔 D-N 표시
+
+흐름 요약:
+1. 사용자가 픽 카드에서 [★ 관심] 클릭
+2. 30분 cron 마다 watch 픽들의 가격 스캔
+3. 진입가 ±2% 도달 → 카카오 "[진입 검토] {종목}"
+4. 손절선 통과 → 카카오 "[Pick 무효] {종목}"
+5. 7일 경과 → 카카오 "[Pick 만료]" + status='expired'
+6. 같은 ticker 가 다음 스크리너에 다시 잡히면 자동 갱신 (supersede)
+7. 사용자가 보유에 추가하면 status='entered' (자동), 이후 holding 모니터링이 책임
+
+운영 전 작업:
+- `009_pick_followup.sql` Supabase SQL Editor 수동 실행
+
 ## 9. 다음에 이어갈 한 줄
 
-> **남은 로드맵**: (Step 2) 스크리너 성과 추적 — 3~6개월 데이터 누적 후 알고리즘 품질 검증. **단기 과제**: `008_alerts.sql` 수동 실행, `/login` 카카오 연결, 가짜 손절/익절선으로 트리거 확인.
+> **남은 로드맵**: (Step 2) 스크리너 성과 추적 — 3~6개월 데이터 누적 후 알고리즘 품질 검증. **단기 과제**: `009_pick_followup.sql` 적용, 픽 한 개에 [★관심] 클릭 → 진입가 근처에서 카카오 알림 확인.
