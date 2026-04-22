@@ -50,13 +50,19 @@ def fetch_market(market: str) -> list[dict]:
     return rows
 
 
-def upsert(rows: list[dict]) -> None:
+def require_supabase_env() -> tuple[str, str]:
     url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
-        print("환경변수 NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 필요", file=sys.stderr)
+        print(
+            "환경변수 NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 필요",
+            file=sys.stderr,
+        )
         sys.exit(1)
+    return url, key
 
+
+def upsert(rows: list[dict], url: str, key: str) -> None:
     endpoint = f"{url}/rest/v1/stocks"
     headers = {
         "apikey": key,
@@ -78,6 +84,7 @@ def upsert(rows: list[dict]) -> None:
 
 def main() -> None:
     load_env_local()
+    url, key = require_supabase_env()
 
     print("KOSPI 종목 수집 중…")
     kospi = fetch_market("KOSPI")
@@ -88,8 +95,11 @@ def main() -> None:
     print(f"  KOSDAQ {len(kosdaq)}개")
 
     rows = kospi + kosdaq
+    if not rows:
+        print("수집된 종목이 없습니다 (KRX 응답 확인 필요)", file=sys.stderr)
+        sys.exit(1)
     print(f"총 {len(rows)}개 upsert 시작…")
-    upsert(rows)
+    upsert(rows, url, key)
     print("완료")
 
 
