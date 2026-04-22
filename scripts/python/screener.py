@@ -234,7 +234,11 @@ def quant_filter(feats: list[CandidateFeatures]) -> list[CandidateFeatures]:
         key=lambda x: (x.volume_ratio_5_20 * 0.6 + (1 - x.pos_52w) * 0.4),
         reverse=True,
     )
-    return out[:30]
+    return out
+
+
+# Claude 에게 넘길 상위 후보 수 (토큰 절약). filtered_count 는 이 cap 이전 값을 기록.
+CLAUDE_CANDIDATE_CAP = 30
 
 
 def fetch_history(ticker: str) -> pd.DataFrame | None:
@@ -414,26 +418,33 @@ def main() -> None:
     print(f"  지표 생성 {len(feats)}개")
 
     print("퀀트 필터 적용 중…")
-    filtered = quant_filter(feats)
-    print(f"  통과 {len(filtered)}개")
+    passed = quant_filter(feats)
+    filtered_count = len(passed)
+    # 토큰 절약 차 Claude 에는 상위 CLAUDE_CANDIDATE_CAP 개만 전달.
+    # filtered_count 는 cap 이전 실제 통과 수 — 튜닝 기준으로 사용.
+    candidates = passed[:CLAUDE_CANDIDATE_CAP]
+    print(
+        f"  통과 {filtered_count}개"
+        + (f" (Claude 전달 상위 {len(candidates)})" if filtered_count > len(candidates) else "")
+    )
 
-    if len(filtered) < FINAL_PICKS:
-        error = f"필터 통과 {len(filtered)}개 — AI 호출 건너뜀"
+    if filtered_count < FINAL_PICKS:
+        error = f"필터 통과 {filtered_count}개 — AI 호출 건너뜀"
         print(error, file=sys.stderr)
         save_run(
             url, key,
-            scanned=len(feats), filtered=len(filtered), final=0,
+            scanned=len(feats), filtered=filtered_count, final=0,
             usage={}, cost_usd=0.0, status="partial", error=error,
         )
         sys.exit(0)
 
-    print(f"Claude Haiku 호출 중 ({len(filtered)} → {FINAL_PICKS})…")
+    print(f"Claude Haiku 호출 중 ({len(candidates)} → {FINAL_PICKS})…")
     try:
-        picks, usage = call_claude(filtered, anth_key)
+        picks, usage = call_claude(candidates, anth_key)
     except Exception as exc:
         save_run(
             url, key,
-            scanned=len(feats), filtered=len(filtered), final=0,
+            scanned=len(feats), filtered=filtered_count, final=0,
             usage={}, cost_usd=0.0, status="failed", error=str(exc),
         )
         raise
@@ -446,10 +457,10 @@ def main() -> None:
 
     run_id = save_run(
         url, key,
-        scanned=len(feats), filtered=len(filtered), final=len(picks),
+        scanned=len(feats), filtered=filtered_count, final=len(picks),
         usage=usage, cost_usd=cost_usd, status="success", error=None,
     )
-    save_picks(url, key, run_id, picks, {f.ticker: f for f in filtered})
+    save_picks(url, key, run_id, picks, {f.ticker: f for f in candidates})
     print(f"완료 — run_id {run_id}")
 
 
