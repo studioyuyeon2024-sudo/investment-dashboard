@@ -1,0 +1,30 @@
+name: Monthly Portfolio Review
+
+# 매월 1일 UTC 00:00 (KST 09:00) — 직전 월 회고
+# Vercel endpoint 를 CRON_SECRET 으로 호출. Vercel Hobby cron 슬롯을 아끼기 위해
+# GitHub Actions 에서 트리거.
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"
+  workflow_dispatch: {}
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger review endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::error::APP_URL secret 미설정 — Vercel 프로덕션 URL 을 APP_URL secret 에 추가하세요"
+            exit 1
+          fi
+          echo "Calling $APP_URL/api/cron/monthly-review"
+          RESPONSE=$(curl -fsSL -X GET "$APP_URL/api/cron/monthly-review" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            --max-time 180)
+          echo "Response: $RESPONSE"
