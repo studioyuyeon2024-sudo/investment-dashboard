@@ -11,6 +11,9 @@ import type { HoldingAlertLevel } from "@/lib/portfolio/guardrails";
 
 const KAKAO_SEND_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send";
 
+// 단일 종목 비중 초과 임계 — 카카오 메시지 템플릿에서 참조.
+const OVERWEIGHT_TEXT_LIMIT = 25;
+
 export type PickAlertType =
   | "pick_entry_ready"
   | "pick_invalidated"
@@ -276,5 +279,3 @@ export async function sendPortfolioAlert(params: {
     };
   }
 }
-
-const OVERWEIGHT_TEXT_LIMIT = 25;
