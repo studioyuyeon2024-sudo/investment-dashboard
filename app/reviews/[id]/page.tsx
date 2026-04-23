@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMonthlyReviewById } from "@/lib/portfolio/monthly-review";
@@ -56,7 +57,7 @@ export default async function ReviewDetailPage({
 // 경량 마크다운 렌더 — ## 헤더, - 리스트, 일반 단락 정도만.
 function MarkdownRenderer({ text }: { text: string }) {
   const lines = text.split("\n");
-  const blocks: React.ReactNode[] = [];
+  const blocks: ReactNode[] = [];
   let listBuffer: string[] = [];
   const flushList = () => {
     if (listBuffer.length > 0) {
@@ -111,7 +112,7 @@ function MarkdownRenderer({ text }: { text: string }) {
 }
 
 // 인라인 굵게/이탤릭 (최소)
-function renderInline(text: string): React.ReactNode {
+function renderInline(text: string): ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*)/);
   return parts.map((p, i) => {
     if (p.startsWith("**") && p.endsWith("**")) {

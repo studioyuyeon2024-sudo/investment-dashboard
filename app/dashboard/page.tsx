@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InvestmentDisclaimer } from "@/components/investment-disclaimer";
-import { EmptyState } from "@/components/empty-state";
 import { AddHoldingFab } from "@/components/add-holding-fab";
 import { HoldingRow } from "@/components/holding-row";
 import { PortfolioSummary } from "@/components/portfolio-summary";
