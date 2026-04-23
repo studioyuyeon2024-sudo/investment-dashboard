@@ -158,6 +158,7 @@ export function ScreenerPickCard({ pick }: { pick: ScreenerPick }) {
           {pick.thesis && <p className="text-sm">{pick.thesis}</p>}
 
           <FlowRow indicators={pick.indicators} />
+          <OutcomeRow pick={pick} />
 
           <div className="grid grid-cols-3 gap-3 rounded-md bg-muted/40 p-3 text-sm">
             <PriceStat label="진입 참고" value={pick.entry_hint} />
@@ -274,6 +275,61 @@ function isRealSector(value: unknown): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
   return !NON_SECTOR_VALUES.has(trimmed);
+}
+
+// Pick 의 성과 추적 요약 한 줄 (진입 이후 변동 · 최고 · 현재).
+function OutcomeRow({ pick }: { pick: ScreenerPick }) {
+  // 아직 추적 전이면 숨김
+  if (pick.last_price === null && pick.outcome_return_pct === null) return null;
+
+  const ret = pick.outcome_return_pct;
+  const retColor =
+    ret === null
+      ? "text-muted-foreground"
+      : ret > 0
+        ? "text-red-700 dark:text-red-300"
+        : ret < 0
+          ? "text-blue-700 dark:text-blue-300"
+          : "text-muted-foreground";
+
+  const max = pick.max_price_observed;
+  const entry = pick.entry_hint;
+  const maxFromEntry =
+    max !== null && entry !== null && entry > 0
+      ? ((max - entry) / entry) * 100
+      : null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+      <span className="font-medium text-muted-foreground">추적</span>
+      {ret !== null && (
+        <span className={`tabular-nums ${retColor}`}>
+          현재 {ret >= 0 ? "+" : ""}
+          {ret.toFixed(2)}%
+        </span>
+      )}
+      {maxFromEntry !== null && maxFromEntry > 0 && (
+        <span className="tabular-nums text-muted-foreground">
+          최고 +{maxFromEntry.toFixed(2)}%
+        </span>
+      )}
+      {pick.take_hit_at && (
+        <span className="rounded-full bg-red-500/10 px-1.5 py-0.5 text-[9px] font-medium text-red-700 dark:text-red-300">
+          익절 도달
+        </span>
+      )}
+      {pick.stop_hit_at && (
+        <span className="rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-medium text-blue-700 dark:text-blue-300">
+          손절 통과
+        </span>
+      )}
+      {pick.finalized && (
+        <span className="rounded-full border border-dashed px-1.5 py-0.5 text-[9px] text-muted-foreground">
+          30일 확정
+        </span>
+      )}
+    </div>
+  );
 }
 
 // 5일 외국인·기관 수급을 배지로 요약.

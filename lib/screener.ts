@@ -23,6 +23,15 @@ export type ScreenerPick = {
   status: PickStatus;
   watching: boolean;
   valid_until: string | null;
+  // outcome tracking
+  entry_hit_at: string | null;
+  stop_hit_at: string | null;
+  take_hit_at: string | null;
+  max_price_observed: number | null;
+  min_price_observed: number | null;
+  last_price: number | null;
+  outcome_return_pct: number | null;
+  finalized: boolean;
 };
 
 export type ScreenerRun = {
@@ -61,7 +70,7 @@ export async function getLatestScreenerRun(): Promise<ScreenerRun | null> {
   const { data: picks, error: pickErr } = await supabase
     .from("screener_picks")
     .select(
-      "id, ticker, name, rank, entry_hint, stop_loss, take_profit, thesis, risks, confidence, indicators, status, watching, valid_until",
+      "id, ticker, name, rank, entry_hint, stop_loss, take_profit, thesis, risks, confidence, indicators, status, watching, valid_until, entry_hit_at, stop_hit_at, take_hit_at, max_price_observed, min_price_observed, last_price, outcome_return_pct, finalized",
     )
     .eq("run_id", run.id)
     .order("rank", { ascending: true });
