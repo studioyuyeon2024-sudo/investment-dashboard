@@ -368,10 +368,91 @@ def format_marcap(eokwon: float) -> str:
     return f"{int(round(eokwon)):,}억원"
 
 
+def fetch_recent_performance(url: str, key: str, days: int = 90) -> dict | None:
+    """최근 N일 finalized pick 의 confidence 별 성과 집계.
+    결과가 충분(최소 5건)하면 Claude 프롬프트에 컨텍스트로 주입 → 자가학습.
+    """
+    since = (datetime.now().date() - timedelta(days=days)).isoformat()
+    try:
+        resp = requests.get(
+            f"{url}/rest/v1/screener_picks",
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            params={
+                "select": "confidence,outcome_return_pct,take_hit_at,stop_hit_at",
+                "finalized": "eq.true",
+                "created_at": f"gte.{since}",
+            },
+            timeout=15,
+        )
+        if resp.status_code >= 300:
+            return None
+        rows = resp.json()
+    except Exception:
+        return None
+
+    if not isinstance(rows, list) or len(rows) < 5:
+        return None
+
+    # confidence 별 집계
+    by_conf: dict[str, dict] = {}
+    all_returns: list[float] = []
+    all_wins = 0
+    all_total = 0
+    for r in rows:
+        conf = r.get("confidence") or "unknown"
+        ret = r.get("outcome_return_pct")
+        take = bool(r.get("take_hit_at"))
+        stop = bool(r.get("stop_hit_at"))
+        win = take and not stop
+
+        bucket = by_conf.setdefault(
+            conf,
+            {"count": 0, "wins": 0, "returns": []},
+        )
+        bucket["count"] += 1
+        if win:
+            bucket["wins"] += 1
+        if isinstance(ret, (int, float)):
+            bucket["returns"].append(float(ret))
+            all_returns.append(float(ret))
+        if win:
+            all_wins += 1
+        all_total += 1
+
+    summary = {
+        "days": days,
+        "total_finalized": all_total,
+        "overall_win_rate_pct": (all_wins / all_total * 100) if all_total else 0,
+        "overall_avg_return_pct": (
+            sum(all_returns) / len(all_returns) if all_returns else 0
+        ),
+        "by_confidence": [],
+    }
+    for conf, b in sorted(by_conf.items()):
+        if b["count"] == 0:
+            continue
+        summary["by_confidence"].append(
+            {
+                "confidence": conf,
+                "count": b["count"],
+                "win_rate_pct": round(b["wins"] / b["count"] * 100, 1),
+                "avg_return_pct": round(
+                    sum(b["returns"]) / len(b["returns"]) if b["returns"] else 0,
+                    2,
+                ),
+            }
+        )
+    return summary
+
+
 def call_claude(
-    features: list[CandidateFeatures], api_key: str
+    features: list[CandidateFeatures],
+    api_key: str,
+    past_performance: dict | None = None,
 ) -> tuple[list[dict], dict]:
-    """Claude Haiku 호출. (picks, usage) 반환."""
+    """Claude Haiku 호출. (picks, usage) 반환.
+    past_performance 가 있으면 자가학습 컨텍스트로 프롬프트에 주입.
+    """
     client = Anthropic(api_key=api_key)
     # 토큰 절약: 지표만 깔끔히
     # marcap 숫자(억원) 는 단위 혼동 방지 차 사람이 읽기 좋은 문자열로 전환.
@@ -380,9 +461,32 @@ def call_claude(
         d = asdict(f)
         d["market_cap"] = format_marcap(d.pop("marcap"))
         payload.append(d)
+
+    # 자가학습 섹션 — 과거 confidence 별 승률·평균 수익률을 참고로.
+    # "당신의 과거 confidence=high 선택의 실제 승률이 40% 이면 high 를 남발하지 말라" 같은 톤.
+    learning_section = ""
+    if past_performance and past_performance.get("total_finalized", 0) >= 5:
+        learning_section = (
+            f"\n\n[자가학습] 최근 {past_performance['days']}일 확정된 pick "
+            f"{past_performance['total_finalized']}건의 실제 성과:\n"
+            f"- 전체 승률 {past_performance['overall_win_rate_pct']:.1f}% · "
+            f"평균 수익률 {past_performance['overall_avg_return_pct']:.2f}%\n"
+        )
+        for row in past_performance.get("by_confidence", []):
+            learning_section += (
+                f"- confidence={row['confidence']}: {row['count']}건, "
+                f"승률 {row['win_rate_pct']}%, 평균 {row['avg_return_pct']}%\n"
+            )
+        learning_section += (
+            "\n위 실적은 당신의 과거 판단 결과입니다. confidence=high 의 실제 승률이 "
+            "낮으면 남발을 자제하고, 전체 평균 수익률이 음수면 더 보수적인 진입가·손절선을 "
+            "제시하세요. 자가 보정 신호로 활용하되 이번 후보 자체 판단을 왜곡하진 말 것.\n"
+        )
+
     user_message = (
         f"후보 {len(features)}개에서 중기 스윙(2~4주) 진입 매력도가 가장 높은 "
-        f"{FINAL_PICKS}개를 고르세요. 손절/익절은 기술적 근거 기반으로 정하세요.\n\n"
+        f"{FINAL_PICKS}개를 고르세요. 손절/익절은 기술적 근거 기반으로 정하세요."
+        f"{learning_section}\n\n"
         f"후보:\n{json.dumps(payload, ensure_ascii=False)}"
     )
 
@@ -638,9 +742,20 @@ def main() -> None:
         # KIS 환경변수 누락 등 — 수급 없이 진행
         print(f"  KIS 비활성 ({exc}) — 수급 없이 진행", file=sys.stderr)
 
+    # 자가학습 컨텍스트 조회 — 최근 90일 확정 pick 결과
+    past_perf = fetch_recent_performance(url, key, days=90)
+    if past_perf:
+        print(
+            f"  자가학습 컨텍스트: finalized {past_perf['total_finalized']}건 "
+            f"(승률 {past_perf['overall_win_rate_pct']:.1f}%, "
+            f"평균 {past_perf['overall_avg_return_pct']:.2f}%)"
+        )
+    else:
+        print("  자가학습 컨텍스트: 데이터 부족 (skip)")
+
     print(f"Claude Haiku 호출 중 ({len(candidates)} → {FINAL_PICKS})…")
     try:
-        picks, usage = call_claude(candidates, anth_key)
+        picks, usage = call_claude(candidates, anth_key, past_perf)
     except Exception as exc:
         save_run(
             url, key,
