@@ -10,6 +10,7 @@ import {
   type PickAlertType,
 } from "@/lib/alerts/sender";
 import { evaluatePick } from "@/lib/screener/follow-up";
+import { computeOutcomeUpdate } from "@/lib/screener/outcome";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +41,13 @@ type Summary = {
     status_changed: number;
     send_failed: number;
   };
+  outcomes: {
+    tracked: number;
+    finalized: number;
+    entry_hits: number;
+    stop_hits: number;
+    take_hits: number;
+  };
   errors: { ticker: string; error: string }[];
 };
 
@@ -51,6 +59,24 @@ type WatchedPick = {
   stop_loss: number | null;
   take_profit: number | null;
   valid_until: string | null;
+};
+
+type TrackedPick = {
+  id: string;
+  ticker: string;
+  created_at: string;
+  entry_hint: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  entry_hit_at: string | null;
+  stop_hit_at: string | null;
+  take_hit_at: string | null;
+  max_price_observed: number | null;
+  min_price_observed: number | null;
+  last_price: number | null;
+  last_price_at: string | null;
+  outcome_return_pct: number | null;
+  finalized: boolean;
 };
 
 function todayKstDate(): string {
@@ -85,6 +111,13 @@ export async function GET(req: Request) {
       already_sent: 0,
       status_changed: 0,
       send_failed: 0,
+    },
+    outcomes: {
+      tracked: 0,
+      finalized: 0,
+      entry_hits: 0,
+      stop_hits: 0,
+      take_hits: 0,
     },
     errors: [],
   };
@@ -304,6 +337,78 @@ export async function GET(req: Request) {
     } catch (err) {
       summary.errors.push({
         ticker: p.ticker,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  }
+
+  // --- 성과 추적: 모든 비-finalized 픽의 outcome 갱신 ---
+  // 알림과 무관하게 모든 pick 의 가격 흐름을 기록 → 알고리즘 품질 데이터화.
+  // watching 픽은 위에서 이미 quote 조회했으므로 quoteCache 재활용.
+  const { data: trackedPicks } = await supabase
+    .from("screener_picks")
+    .select(
+      "id, ticker, created_at, entry_hint, stop_loss, take_profit, entry_hit_at, stop_hit_at, take_hit_at, max_price_observed, min_price_observed, last_price, last_price_at, outcome_return_pct, finalized",
+    )
+    .eq("finalized", false)
+    .returns<TrackedPick[]>();
+
+  const now = new Date();
+  for (const tp of trackedPicks ?? []) {
+    try {
+      const quote =
+        quoteCache.get(tp.ticker) ?? (await getCurrentQuote(tp.ticker));
+      quoteCache.set(tp.ticker, quote);
+
+      const hadEntryHit = tp.entry_hit_at !== null;
+      const hadStopHit = tp.stop_hit_at !== null;
+      const hadTakeHit = tp.take_hit_at !== null;
+
+      const next = computeOutcomeUpdate({
+        current: {
+          pick_id: tp.id,
+          entry_hit_at: tp.entry_hit_at,
+          stop_hit_at: tp.stop_hit_at,
+          take_hit_at: tp.take_hit_at,
+          max_price_observed: tp.max_price_observed,
+          min_price_observed: tp.min_price_observed,
+          last_price: tp.last_price,
+          last_price_at: tp.last_price_at,
+          outcome_return_pct: tp.outcome_return_pct,
+          finalized: tp.finalized,
+        },
+        created_at: tp.created_at,
+        entry_hint: tp.entry_hint,
+        stop_loss: tp.stop_loss,
+        take_profit: tp.take_profit,
+        current_price: quote.price,
+        now,
+      });
+
+      await supabase
+        .from("screener_picks")
+        .update({
+          entry_hit_at: next.entry_hit_at,
+          stop_hit_at: next.stop_hit_at,
+          take_hit_at: next.take_hit_at,
+          max_price_observed: next.max_price_observed,
+          min_price_observed: next.min_price_observed,
+          last_price: next.last_price,
+          last_price_at: next.last_price_at,
+          outcome_return_pct: next.outcome_return_pct,
+          finalized: next.finalized,
+          finalized_at: next.finalized_at,
+        })
+        .eq("id", tp.id);
+
+      summary.outcomes.tracked += 1;
+      if (next.finalized && !tp.finalized) summary.outcomes.finalized += 1;
+      if (!hadEntryHit && next.entry_hit_at) summary.outcomes.entry_hits += 1;
+      if (!hadStopHit && next.stop_hit_at) summary.outcomes.stop_hits += 1;
+      if (!hadTakeHit && next.take_hit_at) summary.outcomes.take_hits += 1;
+    } catch (err) {
+      summary.errors.push({
+        ticker: tp.ticker,
         error: err instanceof Error ? err.message : "unknown",
       });
     }

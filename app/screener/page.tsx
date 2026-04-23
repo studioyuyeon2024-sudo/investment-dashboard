@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { buttonVariants } from "@/components/ui/button";
 import { InvestmentDisclaimer } from "@/components/investment-disclaimer";
 import { ScreenerPickCard } from "@/components/screener-pick-card";
 import { EmptyState } from "@/components/empty-state";
@@ -12,11 +14,19 @@ export default async function ScreenerPage() {
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-6 md:py-10">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">스크리너</h1>
-        <p className="text-sm text-muted-foreground">
-          중기 스윙(2~4주) 관심종목 탐색 — 주 2회 자동 실행
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">스크리너</h1>
+          <p className="text-sm text-muted-foreground">
+            중기 스윙(2~4주) 관심종목 탐색 — 주 2회 자동 실행
+          </p>
+        </div>
+        <Link
+          href="/screener/performance"
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+        >
+          📊 성과
+        </Link>
       </div>
 
       <Alert>
