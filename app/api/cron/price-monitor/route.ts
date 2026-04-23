@@ -7,10 +7,21 @@ import { getSupabaseServiceClient } from "@/lib/supabase/client";
 import {
   sendHoldingAlert,
   sendPickAlert,
+  sendPortfolioAlert,
   type PickAlertType,
 } from "@/lib/alerts/sender";
 import { evaluatePick } from "@/lib/screener/follow-up";
 import { computeOutcomeUpdate } from "@/lib/screener/outcome";
+import { attachPnL, computeTotals } from "@/lib/portfolio/pnl";
+import {
+  computePortfolioHealth,
+  MDD_ALERT_THRESHOLD,
+  OVERWEIGHT_LIMIT_PCT,
+} from "@/lib/portfolio/health";
+import {
+  getPeakMarketValue,
+  upsertTodaySnapshot,
+} from "@/lib/portfolio/snapshots";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +58,14 @@ type Summary = {
     entry_hits: number;
     stop_hits: number;
     take_hits: number;
+  };
+  portfolio: {
+    snapshot_recorded: boolean;
+    drawdown_pct: number | null;
+    peak_value: number | null;
+    current_value: number | null;
+    mdd_alert_sent: boolean;
+    overweight_alerts_sent: number;
   };
   errors: { ticker: string; error: string }[];
 };
@@ -118,6 +137,14 @@ export async function GET(req: Request) {
       entry_hits: 0,
       stop_hits: 0,
       take_hits: 0,
+    },
+    portfolio: {
+      snapshot_recorded: false,
+      drawdown_pct: null,
+      peak_value: null,
+      current_value: null,
+      mdd_alert_sent: false,
+      overweight_alerts_sent: 0,
     },
     errors: [],
   };
@@ -412,6 +439,126 @@ export async function GET(req: Request) {
         error: err instanceof Error ? err.message : "unknown",
       });
     }
+  }
+
+  // --- 포트폴리오 health: 스냅샷 저장 + MDD/비중 알림 ---
+  try {
+    // holdings 에는 Quote cache 로 채워진 PnL 이미 있음 → attachPnL 재계산
+    // (위 loop 에서 이미 quote 는 가져왔지만 HoldingWithPnL 형태가 아님)
+    const holdingsWithPnL = await attachPnL(holdings);
+    const totals = computeTotals(holdingsWithPnL);
+
+    if (totals.total_market_value > 0) {
+      await upsertTodaySnapshot(totals);
+      summary.portfolio.snapshot_recorded = true;
+
+      const peak = await getPeakMarketValue(90);
+      const health = computePortfolioHealth({
+        totals,
+        holdings: holdingsWithPnL,
+        historical_peak: peak,
+      });
+      summary.portfolio.current_value = health.current_value;
+      summary.portfolio.peak_value = health.peak_value;
+      summary.portfolio.drawdown_pct = health.drawdown_pct;
+
+      // MDD 알림 — 하루 1회 dedup (ticker='PORTFOLIO')
+      if (health.drawdown_pct <= MDD_ALERT_THRESHOLD) {
+        const { data: existing } = await supabase
+          .from("alerts")
+          .select("id, kakao_status")
+          .eq("ticker", "PORTFOLIO")
+          .eq("type", "portfolio_mdd")
+          .eq("alert_date", today)
+          .maybeSingle<{ id: string; kakao_status: string }>();
+
+        if (!existing || existing.kakao_status !== "sent") {
+          let alertId = existing?.id;
+          if (!alertId) {
+            const { data: inserted } = await supabase
+              .from("alerts")
+              .insert({
+                ticker: "PORTFOLIO",
+                type: "portfolio_mdd",
+                alert_date: today,
+                change_rate: health.drawdown_pct,
+                kakao_status: "pending",
+              })
+              .select("id")
+              .single<{ id: string }>();
+            alertId = inserted?.id;
+          }
+          if (alertId) {
+            const sendRes = await sendPortfolioAlert({
+              type: "portfolio_mdd",
+              drawdown_pct: health.drawdown_pct,
+              peak_value: health.peak_value,
+              current_value: health.current_value,
+            });
+            await supabase
+              .from("alerts")
+              .update({
+                kakao_status: sendRes.ok ? "sent" : "failed",
+                kakao_response: sendRes.ok ? null : sendRes.message ?? null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", alertId);
+            if (sendRes.ok) summary.portfolio.mdd_alert_sent = true;
+          }
+        }
+      }
+
+      // 비중 초과 — 종목별 dedup
+      for (const ow of health.overweight) {
+        const { data: existing } = await supabase
+          .from("alerts")
+          .select("id, kakao_status")
+          .eq("ticker", ow.ticker)
+          .eq("type", "overweight")
+          .eq("alert_date", today)
+          .maybeSingle<{ id: string; kakao_status: string }>();
+
+        if (existing && existing.kakao_status === "sent") continue;
+
+        let alertId = existing?.id;
+        if (!alertId) {
+          const { data: inserted } = await supabase
+            .from("alerts")
+            .insert({
+              ticker: ow.ticker,
+              type: "overweight",
+              alert_date: today,
+              change_rate: ow.weight_pct,
+              kakao_status: "pending",
+            })
+            .select("id")
+            .single<{ id: string }>();
+          alertId = inserted?.id;
+        }
+        if (!alertId) continue;
+
+        const sendRes = await sendPortfolioAlert({
+          type: "overweight",
+          ticker: ow.ticker,
+          name: ow.name ?? ow.ticker,
+          weight_pct: ow.weight_pct,
+        });
+        await supabase
+          .from("alerts")
+          .update({
+            kakao_status: sendRes.ok ? "sent" : "failed",
+            kakao_response: sendRes.ok ? null : sendRes.message ?? null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", alertId);
+        if (sendRes.ok) summary.portfolio.overweight_alerts_sent += 1;
+      }
+    }
+  } catch (err) {
+    summary.errors.push({
+      ticker: "PORTFOLIO",
+      error: err instanceof Error ? err.message : "unknown",
+    });
   }
 
   return NextResponse.json(summary);

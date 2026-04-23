@@ -16,6 +16,8 @@ export type PickAlertType =
   | "pick_invalidated"
   | "pick_expired";
 
+export type PortfolioAlertType = "portfolio_mdd" | "overweight";
+
 const PICK_TITLES: Record<PickAlertType, string> = {
   pick_entry_ready: "[진입 검토]",
   pick_invalidated: "[Pick 무효]",
@@ -191,3 +193,88 @@ export async function sendPickAlert(params: {
     };
   }
 }
+
+export async function sendPortfolioAlert(params: {
+  type: PortfolioAlertType;
+  // MDD 용
+  drawdown_pct?: number;
+  peak_value?: number;
+  current_value?: number;
+  // overweight 용
+  ticker?: string;
+  name?: string;
+  weight_pct?: number;
+}): Promise<SendResult> {
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) {
+    return { ok: false, message: "카카오 로그인 필요" };
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+  let title: string;
+  let lines: string[];
+
+  if (params.type === "portfolio_mdd") {
+    title = "[포트 낙폭 경고]";
+    lines = [
+      `전체 포트폴리오 피크 대비 ${params.drawdown_pct?.toFixed(2) ?? "—"}% 하락`,
+      `피크 ${formatPrice(Math.round(params.peak_value ?? 0))}원 → 현재 ${formatPrice(Math.round(params.current_value ?? 0))}원`,
+      ``,
+      `잃지 않는 투자 원칙상 전체 포지션 재점검을 권장합니다.`,
+      `- 손절선 재조정`,
+      `- 비중 분산 확인`,
+      `- 추가 진입 자제`,
+      ``,
+      `※ 투자 참고용. 최종 판단은 직접.`,
+    ];
+  } else {
+    title = "[비중 초과]";
+    const name = params.name ?? params.ticker ?? "";
+    lines = [
+      `${name}${params.ticker ? ` (${params.ticker})` : ""} 의 비중이 ${params.weight_pct?.toFixed(1) ?? "—"}% 입니다.`,
+      ``,
+      `단일 종목 ${OVERWEIGHT_TEXT_LIMIT}% 초과 — 분산 원칙 위배 구간.`,
+      `- 부분 익절로 비중 낮추기 검토`,
+      `- 또는 다른 종목 비중 확대`,
+      ``,
+      `※ 투자 참고용. 최종 판단은 직접.`,
+    ];
+  }
+
+  const template = {
+    object_type: "text",
+    text: `${title} ${params.type === "portfolio_mdd" ? "" : params.name ?? ""}\n\n${lines.join("\n")}`,
+    link: {
+      web_url: `${appUrl}/dashboard`,
+      mobile_web_url: `${appUrl}/dashboard`,
+    },
+    button_title: "포트폴리오 열기",
+  };
+
+  const form = new URLSearchParams();
+  form.set("template_object", JSON.stringify(template));
+
+  try {
+    const res = await fetch(KAKAO_SEND_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: form.toString(),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { ok: false, status: res.status, message: body };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : "전송 오류",
+    };
+  }
+}
+
+const OVERWEIGHT_TEXT_LIMIT = 25;

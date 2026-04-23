@@ -6,24 +6,33 @@ import { AddHoldingFab } from "@/components/add-holding-fab";
 import { HoldingRow } from "@/components/holding-row";
 import { PortfolioSummary } from "@/components/portfolio-summary";
 import { PortfolioStatusBar } from "@/components/portfolio-status-bar";
+import { PortfolioHealthBanner } from "@/components/portfolio-health-banner";
 import { HoldingAlerts } from "@/components/holding-alerts";
 import { listHoldings } from "@/lib/holdings";
 import { attachPnL, computeTotals } from "@/lib/portfolio/pnl";
 import { getBenchmarks } from "@/lib/portfolio/benchmarks";
 import { loadTokens } from "@/lib/kakao/token";
+import { computePortfolioHealth } from "@/lib/portfolio/health";
+import { getPeakMarketValue } from "@/lib/portfolio/snapshots";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const rawHoldings = await listHoldings();
-  const [holdings, benchmarks, kakaoTokens] = await Promise.all([
+  const [holdings, benchmarks, kakaoTokens, historicalPeak] = await Promise.all([
     attachPnL(rawHoldings),
     getBenchmarks(),
     loadTokens().catch(() => null),
+    getPeakMarketValue(90).catch(() => null),
   ]);
   const totals = computeTotals(holdings);
   const kakaoConnected =
     kakaoTokens !== null && kakaoTokens.accessExpiresAt > new Date();
+  const health = computePortfolioHealth({
+    totals,
+    holdings,
+    historical_peak: historicalPeak,
+  });
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6 md:px-6 md:py-10">
@@ -31,8 +40,14 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-semibold tracking-tight">
           내 포트폴리오
         </h1>
-        <PortfolioStatusBar holdings={holdings} totals={totals} />
+        <PortfolioStatusBar
+          holdings={holdings}
+          totals={totals}
+          drawdownPct={health.drawdown_pct}
+        />
       </header>
+
+      {holdings.length > 0 && <PortfolioHealthBanner health={health} />}
 
       <HoldingAlerts holdings={holdings} />
 
