@@ -327,6 +327,8 @@ def quant_filter(feats: list[CandidateFeatures]) -> list[CandidateFeatures]:
     튜닝 근거:
     - RSI 55-65 구간: 승률 38%, 평균 -0.5% → RSI 상한 65→55
     - pos_52w 0.5+ 구간: 승률 33%, 평균 -5.2% → 상한 0.92→0.5
+    - 최악 3건 (이수페타시스 -48%, 대한광통신 -35%, 대덕전자 -29%):
+      · 대부분 작은 시총 + 단/중기선 둘 다 아래 → 시총 하한 + MA dual 체크
     """
     out = []
     for f in feats:
@@ -336,6 +338,9 @@ def quant_filter(feats: list[CandidateFeatures]) -> list[CandidateFeatures]:
             continue
         if f.ma60_gap_pct < -10:  # 중기 추세 붕괴 제외
             continue
+        # MA20·MA60 둘 다 음수면 완전 하락 추세 — "저점 매수" 함정 차단
+        if f.ma20_gap_pct < 0 and f.ma60_gap_pct < 0:
+            continue
         if f.pos_52w > 0.5:  # 52주 중간 이상 제외 (백테스트: 0.5+ 승률 33%)
             continue
         if f.volume_ratio_5_20 < 1.0:  # 거래량 수축 제외
@@ -343,6 +348,9 @@ def quant_filter(feats: list[CandidateFeatures]) -> list[CandidateFeatures]:
         if f.return_5d_pct > 15:  # 단기 급등 추격 제외
             continue
         if f.return_5d_pct < -15:  # 급락 직후 캐치나이프 제외
+            continue
+        # 시총 500억원 미만 — 이벤트 리스크(유상증자·감자) 비대칭 큼
+        if f.marcap > 0 and f.marcap < 500:
             continue
         out.append(f)
     # 거래량 증가율 + 52주 저점 탈출 복합 스코어로 정렬
