@@ -37,9 +37,18 @@ export default async function DashboardPage() {
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6 md:px-6 md:py-10">
       <header className="space-y-3">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          내 포트폴리오
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            내 포트폴리오
+          </h1>
+          <a
+            href="/reviews"
+            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+            title="월 1회 Opus 포트 리뷰"
+          >
+            월간 리뷰 →
+          </a>
+        </div>
         <PortfolioStatusBar
           holdings={holdings}
           totals={totals}
