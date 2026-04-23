@@ -167,19 +167,20 @@ export function summarizePerformance(picks: PickForStats[]): PerformanceSummary 
   > = {};
   for (const p of finalizedPicks) {
     const key = p.confidence ?? "unknown";
-    if (!by_confidence[key]) {
-      by_confidence[key] = { count: 0, avg_return: null };
-    }
-    by_confidence[key].count += 1;
+    const bucket = by_confidence[key] ?? { count: 0, avg_return: null };
+    bucket.count += 1;
+    by_confidence[key] = bucket;
   }
   for (const key of Object.keys(by_confidence)) {
+    const bucket = by_confidence[key];
+    if (!bucket) continue;
     const rs = finalizedPicks
       .filter(
         (p) =>
           (p.confidence ?? "unknown") === key && p.outcome_return_pct !== null,
       )
       .map((p) => p.outcome_return_pct as number);
-    by_confidence[key].avg_return =
+    bucket.avg_return =
       rs.length > 0 ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
   }
 
