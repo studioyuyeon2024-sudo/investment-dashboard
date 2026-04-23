@@ -22,6 +22,20 @@ Full planning document: see `PROJECT_PLAN.md`
 - **Background**: Public official with AI Champion Blue certification, learning Python/Claude API
 - **Work constraint**: Office network blocks SSL verification → all development on home PC
 
+## User Preferences (명시 요청 사항)
+
+### 🔔 능동적 제안 의무 (2026-04-23)
+사용자가 수정 요청을 할 때, 더 나은 방법이 있다고 판단되면 **항상 먼저 제안**하고 사용자가 선택하게 할 것.
+
+- ❌ 시키는 대로만 즉시 실행
+- ✅ "이렇게 수정하시려는 거 맞죠? 그런데 X 접근이 Y 이유로 더 나을 수 있습니다. 어느 쪽으로?"
+- 사용자는 제안을 듣고 거절하거나 수용할 수 있음. 제안 없는 실행은 기회 손실.
+
+판단 기준:
+- 성능·유지보수성·투자 철학 적합성·비용 중 하나라도 명백히 유리한 대안이 있으면 반드시 언급
+- 애매하면 본 요청대로 진행 후 짧은 개선 아이디어 한 줄 첨언
+- 사소한 변경 (오타, 단순 rename) 은 바로 실행해도 OK
+
 ## Philosophy (MUST embed in all decisions)
 
 1. **"잃지 않는 투자"** (capital preservation first)
