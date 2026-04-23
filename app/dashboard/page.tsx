@@ -7,7 +7,6 @@ import { HoldingRow } from "@/components/holding-row";
 import { PortfolioSummary } from "@/components/portfolio-summary";
 import { PortfolioStatusBar } from "@/components/portfolio-status-bar";
 import { HoldingAlerts } from "@/components/holding-alerts";
-import { AutoRefreshToggle } from "@/components/auto-refresh-toggle";
 import { listHoldings } from "@/lib/holdings";
 import { attachPnL, computeTotals } from "@/lib/portfolio/pnl";
 import { getBenchmarks } from "@/lib/portfolio/benchmarks";
@@ -29,12 +28,9 @@ export default async function DashboardPage() {
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6 md:px-6 md:py-10">
       <header className="space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            내 포트폴리오
-          </h1>
-          <AutoRefreshToggle />
-        </div>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          내 포트폴리오
+        </h1>
         <PortfolioStatusBar holdings={holdings} totals={totals} />
       </header>
 
