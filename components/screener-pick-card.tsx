@@ -157,6 +157,8 @@ export function ScreenerPickCard({ pick }: { pick: ScreenerPick }) {
         <CardContent className="space-y-3">
           {pick.thesis && <p className="text-sm">{pick.thesis}</p>}
 
+          <FlowRow indicators={pick.indicators} />
+
           <div className="grid grid-cols-3 gap-3 rounded-md bg-muted/40 p-3 text-sm">
             <PriceStat label="진입 참고" value={pick.entry_hint} />
             <PriceStat
@@ -272,6 +274,77 @@ function isRealSector(value: unknown): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
   return !NON_SECTOR_VALUES.has(trimmed);
+}
+
+// 5일 외국인·기관 수급을 배지로 요약.
+function FlowRow({ indicators }: { indicators: Record<string, unknown> | null }) {
+  if (!indicators || typeof indicators !== "object") return null;
+  const fn = indicators.foreign_net_qty_5d;
+  const inst = indicators.institution_net_qty_5d;
+  const fd = indicators.foreign_buy_days_5d;
+  const id = indicators.institution_buy_days_5d;
+
+  const hasFlow =
+    typeof fn === "number" ||
+    typeof inst === "number" ||
+    typeof fd === "number" ||
+    typeof id === "number";
+  if (!hasFlow) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[10px] font-medium text-muted-foreground">
+        5일 수급
+      </span>
+      <FlowChip label="외국인" netQty={fn} buyDays={fd} />
+      <FlowChip label="기관" netQty={inst} buyDays={id} />
+    </div>
+  );
+}
+
+function FlowChip({
+  label,
+  netQty,
+  buyDays,
+}: {
+  label: string;
+  netQty: unknown;
+  buyDays: unknown;
+}) {
+  const qty = typeof netQty === "number" ? netQty : null;
+  const days = typeof buyDays === "number" ? buyDays : null;
+  if (qty === null && days === null) return null;
+
+  const tone =
+    qty === null
+      ? "border-border bg-muted/40 text-muted-foreground"
+      : qty > 0
+        ? "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+        : qty < 0
+          ? "border-blue-500/30 bg-blue-500/5 text-blue-700 dark:text-blue-300"
+          : "border-border bg-muted/40 text-muted-foreground";
+
+  // 수량은 만주 단위로 요약 (수십만 단위가 흔해 가독성 확보)
+  const qtyStr =
+    qty === null
+      ? ""
+      : formatQtyShort(qty);
+
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-[10px] ${tone}`}>
+      {label} {qtyStr}
+      {days !== null && <span className="ml-1 opacity-70">{days}/5일</span>}
+    </span>
+  );
+}
+
+function formatQtyShort(n: number): string {
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  if (abs >= 10_000_000) return `${sign}${(abs / 10_000_000).toFixed(1)}천만주`;
+  if (abs >= 10_000) return `${sign}${(abs / 10_000).toFixed(1)}만주`;
+  if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)}천주`;
+  return `${sign}${abs}`;
 }
 
 // valid_until (YYYY-MM-DD, KST) 까지 남은 일수.
