@@ -322,16 +322,21 @@ def build_features(
 
 
 def quant_filter(feats: list[CandidateFeatures]) -> list[CandidateFeatures]:
-    """중기 스윙 친화 룰. 경험치 기반, 튜닝 가능."""
+    """중기 스윙 친화 룰. 백테스트(2024-10 ~ 2025-03, 156 pick) 결과 반영.
+
+    튜닝 근거:
+    - RSI 55-65 구간: 승률 38%, 평균 -0.5% → RSI 상한 65→55
+    - pos_52w 0.5+ 구간: 승률 33%, 평균 -5.2% → 상한 0.92→0.5
+    """
     out = []
     for f in feats:
-        if f.rsi_14 > 65:  # 과열 제외
+        if f.rsi_14 > 55:  # 과열·강세 구간 제외 (백테스트: 이 구간 승률 38%)
             continue
         if f.rsi_14 < 25:  # 극단 과매도(하락 트렌드 가능) 제외
             continue
         if f.ma60_gap_pct < -10:  # 중기 추세 붕괴 제외
             continue
-        if f.pos_52w > 0.92:  # 52주 고점 바로 아래 제외
+        if f.pos_52w > 0.5:  # 52주 중간 이상 제외 (백테스트: 0.5+ 승률 33%)
             continue
         if f.volume_ratio_5_20 < 1.0:  # 거래량 수축 제외
             continue
