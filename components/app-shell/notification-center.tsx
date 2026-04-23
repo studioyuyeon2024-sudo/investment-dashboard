@@ -41,12 +41,29 @@ const TONE_CLASS: Record<string, string> = {
   bad: "border-blue-500/40 bg-blue-500/5 text-blue-900 dark:text-blue-200",
 };
 
+type FilterKey = "all" | "holding" | "pick";
+
+const HOLDING_TYPES = new Set([
+  "hit_stop",
+  "near_stop",
+  "hit_take",
+  "near_take",
+  "daily_spike",
+  "daily_crash",
+]);
+const PICK_TYPES = new Set([
+  "pick_entry_ready",
+  "pick_invalidated",
+  "pick_expired",
+]);
+
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
   const [alerts, setAlerts] = useState<RecentAlert[]>([]);
   const [loading, setLoading] = useState(false);
   const [unread, setUnread] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterKey>("all");
 
   const recompute = useCallback((list: RecentAlert[]) => {
     const lastViewed =
@@ -112,7 +129,16 @@ export function NotificationCenter() {
             최근 7일 손절·익절·Pick 관련 알림
           </SheetDescription>
         </SheetHeader>
-        <SheetBody className="space-y-2">
+        <SheetBody className="space-y-3">
+          <FilterTabs
+            filter={filter}
+            setFilter={setFilter}
+            counts={{
+              all: alerts.length,
+              holding: alerts.filter((a) => HOLDING_TYPES.has(a.type)).length,
+              pick: alerts.filter((a) => PICK_TYPES.has(a.type)).length,
+            }}
+          />
           {loading && alerts.length === 0 && (
             <p className="text-xs text-muted-foreground">불러오는 중…</p>
           )}
@@ -126,12 +152,56 @@ export function NotificationCenter() {
           {error && (
             <p className="text-xs text-destructive">에러: {error}</p>
           )}
-          {alerts.map((a) => (
-            <AlertItem key={a.id} alert={a} onClose={() => setOpen(false)} />
-          ))}
+          <div className="space-y-2">
+            {alerts
+              .filter((a) => {
+                if (filter === "all") return true;
+                if (filter === "holding") return HOLDING_TYPES.has(a.type);
+                if (filter === "pick") return PICK_TYPES.has(a.type);
+                return true;
+              })
+              .map((a) => (
+                <AlertItem key={a.id} alert={a} onClose={() => setOpen(false)} />
+              ))}
+          </div>
         </SheetBody>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function FilterTabs({
+  filter,
+  setFilter,
+  counts,
+}: {
+  filter: FilterKey;
+  setFilter: (f: FilterKey) => void;
+  counts: { all: number; holding: number; pick: number };
+}) {
+  const tabs: { key: FilterKey; label: string; count: number }[] = [
+    { key: "all", label: "전체", count: counts.all },
+    { key: "holding", label: "보유 종목", count: counts.holding },
+    { key: "pick", label: "Pick", count: counts.pick },
+  ];
+  return (
+    <div className="flex gap-1 rounded-md bg-muted/50 p-1">
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          type="button"
+          onClick={() => setFilter(t.key)}
+          className={`flex-1 rounded px-2 py-1 text-xs transition-colors ${
+            filter === t.key
+              ? "bg-background font-medium text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {t.label}
+          <span className="ml-1 tabular-nums opacity-70">({t.count})</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
