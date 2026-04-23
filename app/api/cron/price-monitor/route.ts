@@ -16,7 +16,6 @@ import { attachPnL, computeTotals } from "@/lib/portfolio/pnl";
 import {
   computePortfolioHealth,
   MDD_ALERT_THRESHOLD,
-  OVERWEIGHT_LIMIT_PCT,
 } from "@/lib/portfolio/health";
 import {
   getPeakMarketValue,
