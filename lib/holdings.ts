@@ -101,6 +101,24 @@ export async function addHolding(input: AddHoldingInput): Promise<Holding> {
   return data as Holding;
 }
 
+// 특정 ticker 의 보유 행 조회. 없으면 null. 한 종목은 한 row 라 assume.
+export async function getHoldingByTicker(
+  ticker: string,
+): Promise<Holding | null> {
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from("holdings")
+    .select("*")
+    .eq("portfolio_id", DEFAULT_PORTFOLIO_ID)
+    .eq("ticker", ticker)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`holding 조회 실패: ${error.message}`);
+  }
+  return (data as Holding) ?? null;
+}
+
 export async function deleteHolding(id: string): Promise<void> {
   const supabase = getSupabaseServiceClient();
   const { error } = await supabase

@@ -67,7 +67,9 @@ function RunMeta({
 }: {
   run: NonNullable<Awaited<ReturnType<typeof getLatestScreenerRun>>>;
 }) {
-  const runDate = new Date(run.run_at).toLocaleString("ko-KR", {
+  const runAt = new Date(run.run_at);
+  const relative = relativeTime(runAt);
+  const absolute = runAt.toLocaleString("ko-KR", {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -77,7 +79,9 @@ function RunMeta({
   return (
     <Card>
       <CardContent className="flex flex-wrap gap-x-6 gap-y-1 py-4 text-xs text-muted-foreground">
-        <span>최근 실행: {runDate}</span>
+        <span title={absolute}>
+          최근 실행: <span className="text-foreground">{relative}</span>
+        </span>
         <span>
           유니버스 {run.scanned_count}개 → 필터 {run.filtered_count}개 → 추림{" "}
           {run.final_count}개
@@ -87,6 +91,20 @@ function RunMeta({
       </CardContent>
     </Card>
   );
+}
+
+// "2시간 전" · "어제 오전 9시" · 3일 넘으면 날짜.
+function relativeTime(date: Date): string {
+  const diffSec = (Date.now() - date.getTime()) / 1000;
+  if (diffSec < 60) return "방금 전";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}분 전`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}시간 전`;
+  if (diffSec < 86400 * 3) return `${Math.floor(diffSec / 86400)}일 전`;
+  return date.toLocaleDateString("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+  });
 }
 
 function NoPicksState({ note }: { note?: string }) {

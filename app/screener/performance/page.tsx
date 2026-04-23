@@ -31,6 +31,7 @@ export default async function ScreenerPerformancePage() {
       ) : (
         <>
           <SummaryGrid summary={summary} />
+          <DistributionBar summary={summary} />
           <PicksTable picks={picks} />
         </>
       )}
@@ -107,6 +108,92 @@ function Stat({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// 익절·손절·미도달 비율을 가로 바로 표시.
+function DistributionBar({ summary }: { summary: PerformanceSummary }) {
+  const total = summary.take_hit + summary.stop_hit + summary.neither_hit;
+  if (total === 0) {
+    return (
+      <Card>
+        <CardContent className="py-6 text-center text-xs text-muted-foreground">
+          아직 익절·손절·미도달 분류가 집계되지 않았습니다.
+        </CardContent>
+      </Card>
+    );
+  }
+  const takePct = (summary.take_hit / total) * 100;
+  const stopPct = (summary.stop_hit / total) * 100;
+  const neitherPct = (summary.neither_hit / total) * 100;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">도달 분포</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex h-3 w-full overflow-hidden rounded-full border">
+          <div
+            className="bg-red-500/70"
+            style={{ width: `${takePct}%` }}
+            title={`익절 ${summary.take_hit}`}
+          />
+          <div
+            className="bg-blue-500/70"
+            style={{ width: `${stopPct}%` }}
+            title={`손절 ${summary.stop_hit}`}
+          />
+          <div
+            className="bg-muted-foreground/30"
+            style={{ width: `${neitherPct}%` }}
+            title={`미도달 ${summary.neither_hit}`}
+          />
+        </div>
+        <div className="flex flex-wrap gap-4 text-xs">
+          <LegendChip
+            dot="bg-red-500/70"
+            label="익절"
+            count={summary.take_hit}
+            pct={takePct}
+          />
+          <LegendChip
+            dot="bg-blue-500/70"
+            label="손절"
+            count={summary.stop_hit}
+            pct={stopPct}
+          />
+          <LegendChip
+            dot="bg-muted-foreground/30"
+            label="미도달"
+            count={summary.neither_hit}
+            pct={neitherPct}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LegendChip({
+  dot,
+  label,
+  count,
+  pct,
+}: {
+  dot: string;
+  label: string;
+  count: number;
+  pct: number;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 tabular-nums">
+      <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
+      <span className="font-medium">{label}</span>
+      <span className="text-muted-foreground">
+        {count} ({pct.toFixed(1)}%)
+      </span>
+    </span>
   );
 }
 

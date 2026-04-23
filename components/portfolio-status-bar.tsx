@@ -7,7 +7,7 @@
 import type { HoldingWithPnL } from "@/lib/portfolio/pnl";
 import type { PortfolioTotals } from "@/lib/portfolio/pnl";
 import { holdingAlertLevel } from "@/lib/portfolio/guardrails";
-import { changeColorClass } from "@/lib/format";
+import { changeColorClass, formatCompactKrw } from "@/lib/format";
 
 export function PortfolioStatusBar({
   holdings,
@@ -18,6 +18,7 @@ export function PortfolioStatusBar({
 }) {
   const count = holdings.length;
   const daily = totals.daily_return_rate;
+  const mktValue = totals.total_market_value;
 
   let urgent = 0;
   let watch = 0;
@@ -39,6 +40,12 @@ export function PortfolioStatusBar({
       <span className={`${pillBase} bg-muted/40`}>
         보유 <span className="tabular-nums">{count}</span>개
       </span>
+
+      {mktValue > 0 && (
+        <span className={`${pillBase} bg-muted/40`}>
+          평가 <span className="tabular-nums">{formatCompactKrw(mktValue)}원</span>
+        </span>
+      )}
 
       {daily !== null && count > 0 && (
         <span
