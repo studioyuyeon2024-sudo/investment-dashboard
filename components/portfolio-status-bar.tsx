@@ -12,9 +12,11 @@ import { changeColorClass, formatCompactKrw } from "@/lib/format";
 export function PortfolioStatusBar({
   holdings,
   totals,
+  drawdownPct,
 }: {
   holdings: HoldingWithPnL[];
   totals: PortfolioTotals;
+  drawdownPct?: number | null;
 }) {
   const count = holdings.length;
   const daily = totals.daily_return_rate;
@@ -53,6 +55,22 @@ export function PortfolioStatusBar({
         >
           오늘 {daily >= 0 ? "+" : ""}
           <span className="tabular-nums">{daily.toFixed(2)}%</span>
+        </span>
+      )}
+
+      {drawdownPct !== null && drawdownPct !== undefined && drawdownPct < -1 && (
+        <span
+          className={`${pillBase} ${
+            drawdownPct <= -10
+              ? "border-red-500/40 bg-red-500/10 text-red-800 dark:text-red-300"
+              : drawdownPct <= -5
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+                : "bg-muted/40 text-muted-foreground"
+          }`}
+          title="피크 대비 하락률"
+        >
+          피크 대비{" "}
+          <span className="tabular-nums">{drawdownPct.toFixed(2)}%</span>
         </span>
       )}
 

@@ -22,6 +22,16 @@ const RECOMMENDATION_LABEL: Record<string, string> = {
   full_sell: "전량매도",
 };
 
+const RECOMMENDATION_TONE: Record<string, string> = {
+  hold: "border-border bg-muted/40 text-muted-foreground",
+  partial_buy:
+    "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300",
+  partial_sell:
+    "border-amber-500/40 bg-amber-500/5 text-amber-800 dark:text-amber-300",
+  full_sell:
+    "border-blue-500/40 bg-blue-500/10 text-blue-800 dark:text-blue-300",
+};
+
 const ALERT_BADGE: Record<
   HoldingAlertLevel,
   { label: string; className: string } | null
@@ -124,6 +134,19 @@ export function HoldingRow({ holding }: { holding: HoldingWithPnL }) {
             <span className="font-mono text-[10px] text-muted-foreground">
               {holding.ticker}
             </span>
+            {holding.latest_recommendation && (
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                  RECOMMENDATION_TONE[holding.latest_recommendation] ??
+                  "border-border bg-muted/40 text-muted-foreground"
+                }`}
+                title="최근 AI 분석"
+              >
+                AI:{" "}
+                {RECOMMENDATION_LABEL[holding.latest_recommendation] ??
+                  holding.latest_recommendation}
+              </span>
+            )}
             {alertBadge && (
               <span
                 className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${alertBadge.className}`}
