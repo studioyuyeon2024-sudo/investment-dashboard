@@ -8,19 +8,28 @@ import type { HoldingWithPnL } from "@/lib/portfolio/pnl";
 import type { PortfolioTotals } from "@/lib/portfolio/pnl";
 import { holdingAlertLevel } from "@/lib/portfolio/guardrails";
 import { changeColorClass, formatCompactKrw } from "@/lib/format";
+import { CashEditor } from "@/components/cash-editor";
+import { CASH_RATIO_WARN_PCT } from "@/lib/portfolio/health";
 
 export function PortfolioStatusBar({
   holdings,
   totals,
   drawdownPct,
+  cashKrw,
+  cashRatioPct,
 }: {
   holdings: HoldingWithPnL[];
   totals: PortfolioTotals;
   drawdownPct?: number | null;
+  cashKrw?: number;
+  cashRatioPct?: number;
 }) {
   const count = holdings.length;
   const daily = totals.daily_return_rate;
   const mktValue = totals.total_market_value;
+  const cash = cashKrw ?? 0;
+  const cashRatio = cashRatioPct ?? 0;
+  const totalAssets = mktValue + cash;
 
   let urgent = 0;
   let watch = 0;
@@ -43,9 +52,24 @@ export function PortfolioStatusBar({
         보유 <span className="tabular-nums">{count}</span>개
       </span>
 
-      {mktValue > 0 && (
+      {totalAssets > 0 && (
         <span className={`${pillBase} bg-muted/40`}>
-          평가 <span className="tabular-nums">{formatCompactKrw(mktValue)}원</span>
+          총자산{" "}
+          <span className="tabular-nums">
+            {formatCompactKrw(totalAssets)}원
+          </span>
+        </span>
+      )}
+
+      <CashEditor initial={cash} />
+
+      {totalAssets > 0 && cashRatio > 0 && cashRatio < CASH_RATIO_WARN_PCT && (
+        <span
+          className={`${pillBase} border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300`}
+          title="현금 비중이 낮으면 하락장 대응 여력 부족"
+        >
+          현금 비중{" "}
+          <span className="tabular-nums">{cashRatio.toFixed(1)}%</span> (낮음)
         </span>
       )}
 

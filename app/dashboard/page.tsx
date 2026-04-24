@@ -13,16 +13,18 @@ import { getBenchmarks } from "@/lib/portfolio/benchmarks";
 import { loadTokens } from "@/lib/kakao/token";
 import { computePortfolioHealth } from "@/lib/portfolio/health";
 import { getPeakMarketValue } from "@/lib/portfolio/snapshots";
+import { getCashKrw } from "@/lib/portfolio/cash";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const rawHoldings = await listHoldings();
-  const [holdings, benchmarks, kakaoTokens, historicalPeak] = await Promise.all([
+  const [holdings, benchmarks, kakaoTokens, historicalPeak, cashKrw] = await Promise.all([
     attachPnL(rawHoldings),
     getBenchmarks(),
     loadTokens().catch(() => null),
     getPeakMarketValue(90).catch(() => null),
+    getCashKrw().catch(() => 0),
   ]);
   const totals = computeTotals(holdings);
   const kakaoConnected =
@@ -31,6 +33,7 @@ export default async function DashboardPage() {
     totals,
     holdings,
     historical_peak: historicalPeak,
+    cash_krw: cashKrw,
   });
 
   return (
@@ -52,6 +55,8 @@ export default async function DashboardPage() {
           holdings={holdings}
           totals={totals}
           drawdownPct={health.drawdown_pct}
+          cashKrw={health.cash_krw}
+          cashRatioPct={health.cash_ratio_pct}
         />
       </header>
 
