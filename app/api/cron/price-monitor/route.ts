@@ -21,6 +21,7 @@ import {
   getPeakMarketValue,
   upsertTodaySnapshot,
 } from "@/lib/portfolio/snapshots";
+import { getCashKrw } from "@/lib/portfolio/cash";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -452,10 +453,12 @@ export async function GET(req: Request) {
       summary.portfolio.snapshot_recorded = true;
 
       const peak = await getPeakMarketValue(90);
+      const cashKrw = await getCashKrw().catch(() => 0);
       const health = computePortfolioHealth({
         totals,
         holdings: holdingsWithPnL,
         historical_peak: peak,
+        cash_krw: cashKrw,
       });
       summary.portfolio.current_value = health.current_value;
       summary.portfolio.peak_value = health.peak_value;
