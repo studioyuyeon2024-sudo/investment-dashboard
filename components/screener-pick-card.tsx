@@ -120,6 +120,7 @@ export function ScreenerPickCard({ pick }: { pick: ScreenerPick }) {
                 {pick.ticker}
               </span>
             </CardTitle>
+            <StrategyBadge strategy={pick.strategy} />
             {(() => {
               const raw =
                 typeof pick.indicators === "object" &&
@@ -257,6 +258,57 @@ function PriceStat({
         {value !== null ? `${formatPrice(value)}원` : "—"}
       </span>
     </div>
+  );
+}
+
+// 전략별 배지 — 어떤 이론 기반으로 선정됐는지 한눈에.
+const STRATEGY_STYLE: Record<
+  string,
+  { label: string; className: string }
+> = {
+  breakout: {
+    label: "🚀 돌파",
+    className:
+      "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300",
+  },
+  low_buy: {
+    label: "🪂 저점",
+    className:
+      "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  },
+  fibonacci: {
+    label: "📐 피보",
+    className:
+      "border-purple-500/40 bg-purple-500/10 text-purple-700 dark:text-purple-300",
+  },
+  ihs: {
+    label: "🔄 역헤숄",
+    className:
+      "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  },
+  pullback: {
+    label: "↩ 눌림",
+    className:
+      "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+  },
+  volume_expansion: {
+    label: "📈 거래량",
+    className:
+      "border-foreground/30 bg-foreground/5 text-foreground",
+  },
+};
+
+function StrategyBadge({ strategy }: { strategy: string | null }) {
+  if (!strategy) return null;
+  const style = STRATEGY_STYLE[strategy];
+  if (!style) return null;
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${style.className}`}
+      title={`선정 전략: ${strategy}`}
+    >
+      {style.label}
+    </span>
   );
 }
 
