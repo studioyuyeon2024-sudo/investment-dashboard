@@ -702,12 +702,27 @@ def call_claude(
         raw = raw.strip("`").split("\n", 1)[-1]
         if raw.endswith("```"):
             raw = raw[: -3]
-    # JSON 배열만 추출 — Claude 가 배열 뒤/앞에 설명 텍스트를 붙이는 경우 방어.
-    # (프롬프트가 길어지면 가끔 덧붙이는 설명 대응)
-    m = re.search(r"\[[\s\S]*\]", raw)
-    if m:
-        raw = m.group(0)
-    picks = json.loads(raw)
+
+    # JSON 배열 파싱 — 뒤/앞에 설명 텍스트가 붙어도 방어.
+    # 1) 일반 json.loads 시도
+    # 2) 실패하면 '[' 이후부터 raw_decode 로 첫 JSON 배열만 추출
+    # 3) 그래도 실패하면 greedy 정규식 폴백
+    picks: list[dict] | None = None
+    try:
+        picks = json.loads(raw)
+    except json.JSONDecodeError:
+        start = raw.find("[")
+        if start != -1:
+            try:
+                decoder = json.JSONDecoder()
+                picks, _ = decoder.raw_decode(raw[start:])
+            except json.JSONDecodeError:
+                # 마지막 폴백: 대괄호 쌍 regex greedy
+                m = re.search(r"\[[\s\S]*\]", raw)
+                if m:
+                    picks = json.loads(m.group(0))
+    if picks is None:
+        raise RuntimeError(f"Claude 응답 JSON 파싱 실패: {raw[:500]}")
     if not isinstance(picks, list):
         raise RuntimeError(f"응답이 배열이 아님: {raw[:200]}")
 
