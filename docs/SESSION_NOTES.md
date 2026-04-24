@@ -1,215 +1,235 @@
 # 세션 요약 — investment-dashboard
 
-> 날짜: 2026-04-22
-> 브랜치: `claude/update-dashboard-stock-names-31XE6`
-> 기준 커밋: `a686f72`
+> 업데이트: 2026-04-24 · 기준 커밋: `969f2e5`
 
-본 문서는 랜딩 페이지 리디자인·스크리너·ETF 분기 프롬프트까지 완료된 시점의 세션 히스토리와 다음 로드맵을 정리한 것이다. 다음 세션 시작 시 이 문서만 읽어도 맥락 복구가 가능하도록 구성.
+개인용 한국 주식 포트폴리오 + AI 분석 + 카카오 알림 시스템. 철학: **잃지 않는 투자** (원금 보호 우선, 분산 + ETF 중심).
 
 ---
 
-## 1. 프로젝트 원칙 (변경 불가)
+## 1. 현재 작동하는 기능
 
-1. **잃지 않는 투자** — 원금 보호 > 수익 추구. 전량 매매 지양, 부분 매매 권장, 손절·익절선 구체 수치 필수.
-2. **비용 최소화** — 월 Claude API 예산 3,000원(~$2.15). 기본 Haiku 4.5, 필요시만 Sonnet/Opus.
-3. **조립형 빌드** — Ghostfolio / TradingAgents / claude-trading-skills 패턴 재활용, 커스텀은 한국 전용(KIS·Kakao·DART)에만.
-4. **Korean-first** — UI·Claude 출력 모두 한국어. 코드 주석은 비즈니스 로직은 한국어, 기술 세부는 영어.
+### 포트폴리오 관리
+- 보유 종목 등록·수정·삭제 (`/dashboard`)
+- **추매**(기존 포지션에 추가 매수, 평단 자동 재계산) 전용 Sheet
+- 손절선/익절선 개별 설정
+- **현금 필드** (예수금) 별도 입력 → 총 자산 기준 비중 계산
+- 실시간 KIS 시세 · 당일 변동률 · 미실현 손익
+- 벤치마크 비교 (KODEX 200 / KODEX 코스닥150)
 
-## 2. 스택 (확정)
+### 리스크 가드레일
+- **진입 시점 경고**: 집중도 >25% · 당일 급등 +5%+ · 손절선 미설정 · 손절폭 >10%
+- **보유 종목 모니터링**: 손절/익절 근접(±3%) 및 도달 자동 감지
+- **포트 전체 MDD**: 피크 대비 -10% 하락 시 알림
+- **비중 초과**: 총 자산 대비 단일 종목 25% 넘으면 경고
+- **현금 비중 하한**: 현금 10% 미만 시 경고
 
-- Next.js 15 App Router + TypeScript strict
-- Tailwind + shadcn/ui + lucide + recharts
-- Supabase (Postgres + RLS, 마이그레이션은 SQL Editor 수동)
-- Anthropic SDK (Haiku 4.5 / Sonnet 4.6 / Opus 4.7 라우팅 + prompt caching)
-- Python: Vercel Python Functions 및 GitHub Actions — **FinanceDataReader(FDR) 사용** (pykrx·pandas-ta 채택 안 함)
-- 시세: KIS Open API (주문 기능은 미구현, 조회만)
-- Scheduling: Vercel Cron + GitHub Actions Cron
+### 스크리너 (중기 스윙 2~4주)
+- **평일 매일 16:00 KST** 자동 실행 (GitHub Actions)
+- KOSPI 200 + KOSDAQ 150 유니버스
+- **다중 전략**:
+  - `low_buy` (저점 매수): RSI 25~55, pos_52w ≤0.5, 시총 500억+
+  - `breakout` (박병창식 박스권 돌파): 박스 <25%, 거래량 2배+, 장대양봉
+- **시장 게이트**: KODEX 200 기반 bull/bear/neutral 판단, bear 시장엔 돌파 전략 스킵
+- **하이브리드**: 신호 0 이면 Claude 호출 스킵 (비용 절감)
+- KIS 외국인/기관 5일 수급 주입
+- Claude Haiku 4.5 로 top 3 선정
+- **pick 후속관리**: 관심 토글 → 진입가 도달 / 손절 통과 / 7일 만료 자동 알림
+- **성과 추적**: 30일 후 outcome 확정 → 승률·평균 수익률 자동 집계
+- **Claude 자가학습**: 과거 confidence/strategy 별 성과를 다음 프롬프트에 주입
 
----
+### AI 분석
+- 개별주식 / ETF 프롬프트 분기
+- 종목명·섹터·수급·과거 성과 컨텍스트
+- 할루시네이션 방지 (이름 명시·수치 재사용 지시)
+- 응답 캐시 1시간 (동일 marketData hash)
 
-## 3. 이번 세션에서 완료한 작업
+### 카카오 알림 (`price-monitor` cron, 30분 주기)
+- 손절/익절 근접·도달 (hit_stop, near_stop, hit_take, near_take)
+- pick 진입 검토 (pick_entry_ready)
+- pick 무효 (pick_invalidated)
+- pick 만료 (pick_expired)
+- 포트 MDD 경고 (portfolio_mdd)
+- 비중 초과 (overweight)
+- 하루 1회 중복 방지, 실패 시 다음 cron 에서 재시도
 
-### 3.1 GitHub Actions: KRX 카탈로그 로더 정상화
-- `load-stocks.yml` → pandas-ta 의존성 제거.
-- pykrx 가 KRX 로그인 불안정으로 실패 → **FDR 로 전환** (`fdr.StockListing("KOSPI"/"KOSDAQ"/"ETF/KR")`).
-- `scripts/python/load_stocks.py` 재작성: 컬럼명(`Code`/`Symbol`/`ISU_CD`) 자동 매칭, ETF 티커 집합과 교차하여 `type='etf'/'stock'` 태깅.
-- Supabase `stocks` 테이블에 월 1회 upsert. 약 2,700개 적재 확인.
+### 월 1회 Opus 포트 리뷰
+- 매월 1일 09:00 KST GitHub Actions
+- Opus 4.7 로 직전 월 회고 (성과·종목·스크리너·제안·리스크 5섹션)
+- `/reviews` 페이지에서 마크다운 렌더
+- 월 비용 ~85원
 
-### 3.2 DB 스키마 추가 (수동 SQL)
-- `005_stocks_type.sql` — `stocks.type` 컬럼 추가 (check: 'stock' | 'etf', default 'stock').
-- `006_screener.sql` — `screener_runs` (메타·비용), `screener_picks` (rank/entry/stop/take/thesis/risks jsonb/confidence/indicators jsonb) + RLS public read.
-
-### 3.3 ETF vs 개별종목 프롬프트 분기
-- `lib/claude/prompts.ts`:
-  - `COMMON_RESPONSE_FORMAT` — 공용 JSON 스키마.
-  - `BASE_SYSTEM_PROMPT` — 개별종목용 (차트·수급·펀더멘털).
-  - `ETF_SYSTEM_PROMPT` — 기초지수 방향, 괴리율, 운용보수, 추적오차, 레버리지/인버스 횡보장 감쇠.
-- `lib/claude/client.ts` `analyzeTicker({ stockType })` 로 프롬프트 선택.
-- `app/api/analyze/[ticker]/route.ts` 에서 `getStockByTicker` → type 전달.
-
-### 3.4 종목명 표출 (티커만 뜨던 이슈)
-- `lib/holdings.ts` — `name` 누락 시 `stocks` 카탈로그에서 조회해 merge.
-- `components/holding-row.tsx` — 좌측 종목명/티커, 우측 현재가·등락·P&L.
-- `app/holdings/[ticker]/page.tsx` — 큰 h1 종목명 헤더 + 시장 배지.
-
-### 3.5 수익률 대시보드 + 벤치마크
-- `lib/portfolio/pnl.ts` — `attachPnL()` (시세 병렬 조회, 실패 시 graceful fallback), `computeTotals()` (가중 일간 수익률).
-- `lib/portfolio/benchmarks.ts` — KODEX 200(069500), KODEX 코스닥150(229200) 조회.
-- `components/portfolio-summary.tsx` — 총 평가·미실현·수익률·일간 가중 수익률·벤치마크 비교.
-- `app/dashboard/page.tsx` — `Promise.all([attachPnL, getBenchmarks])` 병렬.
-
-### 3.6 스크리너 (주 2회, KOSPI200 + KOSDAQ150, Top 3)
-- `.github/workflows/screener.yml` — cron `0 7 * * 1,4` (월·목 KST 16:00).
-- `scripts/python/screener.py` (440줄):
-  1. 유니버스: KOSPI 시총 상위 200 + KOSDAQ 상위 150 (FDR).
-  2. 지표: RSI14 (numpy EWM), MA5/20/60 gap, vol_ratio_5/20, pos_52w, 리턴.
-  3. 퀀트 필터: `RSI 25~65 / MA60gap > -10% / pos_52w < 0.92 / vol_ratio ≥ 1.0 / return_5d ∈ [-15, +15]%`.
-  4. Claude Haiku 4.5 호출 (`SCREENER_SYSTEM_PROMPT`, max_tokens=1200) → 3개 선정.
-  5. `screener_runs` / `screener_picks` upsert + 비용 로깅.
-- `lib/screener.ts` — `getLatestScreenerRun()` join.
-- `app/screener/page.tsx` — "참고용 리스트, 매수 권유 아님" 배너 / run 메타 / PickCard.
-
-### 3.7 랜딩 페이지 리디자인
-- `app/page.tsx` 전면 재작성: Hero(gradient) / Features grid(4 live + 2 planned) / Quick Access / 실시간 세팅 현황.
-- `lib/system-status.ts` — `checkServices()` 서버 전용, env 존재 여부만 체크(네트워크 호출 X).
-- 버그 수정: `KIS_ACCOUNT_NUMBER` 를 필수에서 제외 (코드가 조회 API 만 쓰고 주문·잔고 호출을 안 하므로). envVars 는 `KIS_APP_KEY`, `KIS_APP_SECRET` 만 필수.
-- `app/layout.tsx` — `lang="ko"`, 한국어 metadata.
+### UX
+- 모바일 하단 탭바 (포트폴리오/스크리너/종목찾기/설정)
+- 공통 Header + 🔔 알림 센터 (최근 7일, 필터 탭)
+- 1초 체크 상태 pill (보유·총자산·오늘 수익률·피크 대비·경고)
+- 종목 카드 진행바 (손절●익절) + 좌측 경계 색 (알림 레벨)
+- AI 의견 상시 배지 (`AI: 보유/부분매수`)
+- 스크리너 전략 배지 (🚀 돌파 / 🪂 저점)
+- FAB 로 종목 추가, Sheet 로 추매/수정
+- 모든 액션 토스트 피드백
 
 ---
 
-## 4. 스크리너 첫 실행 — 현재 상태
+## 2. 기술 스택
 
-- 월 실행 성공 (사용자 "스크리너 잘작동해 !"), `/screener` 에 결과 표시 확인.
-- 3개 pick + run 메타 정상 렌더링.
-- **다음 단계: 필터 튜닝을 위한 결과 관찰 필요** — filtered_count, 섹터/시총/변동성 분포, confidence 분포 확인 후 규칙 조정.
-
----
-
-## 5. 다음 로드맵 (사용자 확정 순서: 1 → 3 → 4 → 2)
-
-### Step 1. 필터 튜닝 (보류)
-- **버그 수정 완료**:
-  - 시가총액 단위 혼동(씨젠 "129억" 오표기) — `format_marcap()` 으로 문자열 변환 후 Claude 전달
-  - `filtered_count` 가 cap(30)에 묶여 항상 ≤30 → cap 제거 + `CLAUDE_CANDIDATE_CAP` 상수로 분리
-- 튜닝은 2~3회 실행 누적 관찰 후 재점검. 무리해서 지금 조정 X.
-
-### Step 2. (후순위) 스크리너 성과 추적
-- `screener_picks` 의 pick 들을 이후 20일/60일간 추적해 수익률 집계 → 알고리즘 품질 검증.
-- 3~6개월 데이터 쌓인 후에 의미 있는 분석 가능.
-
-### Step 3. 리스크 가드레일 + Layer 1 모니터링 (완료)
-진입 경고 (`lib/portfolio/guardrails.ts`):
-- 집중도 25% 초과 경고
-- 당일 +5% 이상 급등 → 추격매수 경고
-- 손절선 미설정 안내 + 손절폭 10%+ 과도 경고
-
-보유 종목 모니터링:
-- `holdingAlertLevel()` — 현재가 vs 손절/익절 근접(±3%)/도달 단계
-- `HoldingRow` 진행바 (손절 ●━━ 현재가 ━━ 익절) + 근접 배지
-- `HoldingAlerts` 대시보드 상단 긴급 배너
-
-스크리너 → 대시보드 연결:
-- PickCard "포트폴리오에 담기" 버튼 → `/dashboard?ticker=...&entry=...&stop=...&take=...&from=screener`
-- AddHoldingForm 에서 URL query 로 자동 채움
-
-### Step 4. 카카오 자동 알림 (Layer 2, 완료)
-- `supabase/migrations/008_alerts.sql` — `alerts` 테이블
-  - unique(holding_id, type, alert_date) 로 하루 1회 발송 보장
-  - kakao_status: pending/sent/failed/skipped, failed 는 다음 cron 에서 재시도
-  - RLS: service_role 만 접근
-- `lib/alerts/sender.ts` — `sendHoldingAlert()` 카카오 메모 템플릿 + getValidAccessToken 재사용
-- `app/api/cron/price-monitor/route.ts` 확장:
-  - Step 3 의 `holdingAlertLevel()` 재사용
-  - 오늘 동일 (holding, type) 조회 → 없으면 insert, failed 면 retry, sent 면 skip
-  - 발송 결과로 status 업데이트
-- `vercel.json` 기존 cron `*/30 0-6 * * 1-5` (KST 09:00-15:30 30분 간격) 그대로 사용
-- **Supabase SQL Editor 에서 `008_alerts.sql` 수동 실행 필요**
-- **선택 설정**: `CRON_SECRET` 환경변수 (Vercel) — 있으면 cron 이 Bearer 검증
-- 확장 여지 (추후): daily_spike/daily_crash 타입 (±5%), 분배락 전일 등
-
-필요 환경변수:
-- `KAKAO_REST_API_KEY` / `KAKAO_CLIENT_SECRET` — 기존
-- 사용자가 한 번 `/login` 으로 카카오 OAuth 완료해야 `kakao_service_token` row 생성
-
----
-
-## 6. 알려진 이슈 / 결정 사항
-
-| 주제 | 결정 |
+| 계층 | 기술 |
 |---|---|
-| pykrx | **불채택** — KRX 로그인 불안정, FDR 로 대체 |
-| pandas-ta | **불채택** — setuptools·numpy 2.x 호환성 이슈. numpy EWM 수동 구현 |
-| 자동 매매 (KIS 주문) | **구현 금지** — 조회만. `KIS_ACCOUNT_NUMBER` 미사용 |
-| Supabase 마이그레이션 | **SQL Editor 수동** (MVP 단계), Claude 가 로컬에서 실행 불가 |
-| 분석 대상 스타일 | **분산 + ETF 중심** (사용자 확정) |
-| 스크리너 빈도 | **주 2회 (월·목)** |
-| 브랜치 전략 | main / feature 브랜치. squash-merge, force-with-lease |
+| Framework | Next.js 15 (App Router) + TypeScript strict |
+| UI | Tailwind CSS 4 + shadcn/ui + base-ui + sonner |
+| Backend | Next.js API Routes + Vercel Serverless |
+| Python | GitHub Actions (FinanceDataReader + numpy + anthropic SDK) |
+| DB | Supabase (PostgreSQL + RLS) |
+| AI | Claude API (Haiku 4.5 / Opus 4.7) |
+| Scheduling | Vercel Cron (30분) + GitHub Actions (일/주/월) |
+| Auth | Kakao OAuth ("나에게 보내기" 권한) |
+| External | KIS Open API · FDR · KODEX ETF |
 
 ---
 
-## 7. "잃지 않는 투자" 원칙과 현 구현의 관계
+## 3. DB 마이그레이션 이력
 
-사용자가 "실질적 수익을 내고 싶다" 고 한 지점에서 AI 는 **수익 기계가 아니라 관찰·측정·경고 도구**로 재정의. 현재 웹의 역할:
-
-1. **측정** — 포트폴리오 수익률, 벤치마크 대비 성과 (대시보드)
-2. **탐색** — 중기 스윙 후보 발굴 (스크리너)
-3. **분석** — 개별·ETF 분기 프롬프트 (잃지 않는 투자 원칙 내장)
-4. **경고** (예정) — 집중도·추격매수·손절 근접 알림
-
-수익은 사용자의 판단에서 나오고, 이 도구는 **판단 재료·실수 방지**만 제공.
+| # | 내용 |
+|---|---|
+| 001 | `kis_service_token` — KIS 토큰 캐시 |
+| 002 | `kakao_service_token` — 카카오 토큰 캐시 |
+| 003 | `portfolios` default + user_id nullable |
+| 004 | `stocks` 카탈로그 |
+| 005 | `stocks.type` (stock/etf) |
+| 006 | `screener_runs` + `screener_picks` |
+| 008 | `alerts` — 카카오 발송 이력 + dedup |
+| 009 | `screener_picks` 후속관리 (status/watching/valid_until) + pick 알림 타입 |
+| 010 | `stocks.sector` |
+| 011 | KRX Dept 오사용 정리 |
+| 012 | `screener_picks` outcome 추적 컬럼 |
+| 013 | `portfolio_snapshots` + alerts 타입 확장 (MDD/overweight) |
+| 014 | `monthly_reviews` |
+| 015 | `screener_picks.strategy` + `screener_runs.market_regime/strategy_counts` |
+| 016 | `filter_config` + `tuning_runs` (자동 튜닝 인프라) |
+| 017 | `portfolios.cash_krw` |
 
 ---
 
-## 8. 세션 시작 시 참고할 주요 파일
+## 4. 자동화 워크플로우
 
-1. `CLAUDE.md` — 규칙·컨벤션
-2. `PROJECT_PLAN.md` — 전체 계획
-3. `docs/SESSION_NOTES.md` — 이 문서
-4. `supabase/migrations/` — 스키마 순서대로
-5. `scripts/python/screener.py` — 퀀트 필터 로직
-6. `lib/claude/prompts.ts` — 시스템 프롬프트
-7. 최근 `git log` — 직전 작업
+### GitHub Actions
+| 워크플로우 | 주기 | 역할 |
+|---|---|---|
+| `load-stocks.yml` | 월 1회 | KRX 종목 2,700개 카탈로그 동기화 (FDR) |
+| `screener.yml` | 평일 매일 16:00 KST | 350 종목 분석 → top 3 pick 선정 |
+| `monthly-review.yml` | 매월 1일 09:00 KST | Opus 포트 회고 생성 |
+| `auto-tune.yml` | 매주 일요일 09:00 KST | 필터 임계값 자동 튜닝 (dryrun/applied) |
+| `backtest.yml` | 수동 실행 | 과거 데이터로 필터 유효성 측정 |
 
-### Step 5. 스크리너 픽 후속관리 (관심 토글 + 자동 만료, 완료)
+### Vercel Cron
+| 경로 | 주기 | 역할 |
+|---|---|---|
+| `/api/cron/daily-report` | 평일 07:00 UTC | 일간 리포트 |
+| `/api/cron/price-monitor` | 평일 KST 09:00~15:30 30분 | 손절·익절·MDD·비중·pick 스캔 + 카카오 발송 |
 
-문제: 픽이 다음 날 가격이 변하면 thesis 가 무너지거나, 진입 안 했는데 진입가 도달해도 알 길 없음.
+---
 
-해결:
-- `supabase/migrations/009_pick_followup.sql`
-  - `screener_picks` 에 status/watching/valid_until/last_evaluated_at/entered_at 컬럼
-  - alerts 테이블에 pick_id + 신규 타입 (pick_entry_ready / pick_invalidated / pick_expired)
-  - alerts unique 키를 (ticker, type, alert_date) 로 통합 — holding/pick 공유
-- `scripts/python/screener.py`
-  - save_picks 가 `valid_until = today + 7 days` 부여
-  - 동일 ticker 가 새 run 에 또 들어오면 기존 active 픽을 supersede
-- `lib/screener/follow-up.ts`: `evaluatePick()` pure function
-  - 보유 종목과 매치되면 → entered (자동 정리)
-  - valid_until 지나면 → expired
-  - 손절선 통과 → invalidated
-  - 진입가 ±2% 도달 → triggered
-- `lib/alerts/sender.ts`: `sendPickAlert()` 추가, 신규 타입 3종 카카오 메시지
-- `app/api/cron/price-monitor/route.ts`:
-  - 보유 종목 스캔 후 watching=true && status=active 픽 스캔
-  - quote cache 공유로 KIS 호출 중복 회피
-  - status 전이 + 알림 dedup + 카카오 발송
-- `app/api/screener/picks/[pickId]/watch/route.ts`: 관심 토글 endpoint
-- `components/screener-pick-card.tsx`:
-  - "★ 관심" 토글 버튼 (낙관적 업데이트 + 롤백)
-  - 상태 배지 (진입 도달 / Thesis 무너짐 / 기간 만료 / 포트 추가됨 / 재추천 갱신)
-  - active 픽엔 D-N 표시
+## 5. 스크리너 전략 시스템
 
-흐름 요약:
-1. 사용자가 픽 카드에서 [★ 관심] 클릭
-2. 30분 cron 마다 watch 픽들의 가격 스캔
-3. 진입가 ±2% 도달 → 카카오 "[진입 검토] {종목}"
-4. 손절선 통과 → 카카오 "[Pick 무효] {종목}"
-5. 7일 경과 → 카카오 "[Pick 만료]" + status='expired'
-6. 같은 ticker 가 다음 스크리너에 다시 잡히면 자동 갱신 (supersede)
-7. 사용자가 보유에 추가하면 status='entered' (자동), 이후 holding 모니터링이 책임
+### 현재 활성 2개 전략
+1. **저점 매수** (`low_buy`)
+   - RSI 25~55, pos_52w ≤0.5, 정배열 건전성, 시총 500억+
+   - 백테스트 기반 튜닝 적용 완료
 
-운영 전 작업:
-- `009_pick_followup.sql` Supabase SQL Editor 수동 실행
+2. **박스권 돌파** (`breakout`) — **박병창 매매기술** 반영
+   - 정배열 + 20일선 상승 + 박스 폭 <25%
+   - 60일 고점 1% 이상 돌파 + 거래량 2배+ + 장대양봉 2%+
 
-## 9. 다음에 이어갈 한 줄
+### 시장 게이트
+KODEX 200 의 현재가 vs MA20 vs MA60:
+- `bull`: 모든 전략 작동
+- `neutral`: 모든 전략 작동 (경고만)
+- `bear`: `breakout` 전략 자동 스킵 (약세장 돌파 실패율 ↑)
 
-> **남은 로드맵**: (Step 2) 스크리너 성과 추적 — 3~6개월 데이터 누적 후 알고리즘 품질 검증. **단기 과제**: `009_pick_followup.sql` 적용, 픽 한 개에 [★관심] 클릭 → 진입가 근처에서 카카오 알림 확인.
+### 향후 추가 예정 (Phase B/C)
+- `fibonacci` — 38.2/50/61.8% 되돌림 + 20일선 지지
+- `ihs` — 역헤드앤숄더 (scipy.find_peaks)
+- `pullback` — 그랜빌 매수 2·3법칙
+- `volume_expansion` — 거래량 수축→확장
+
+---
+
+## 6. 자동 튜닝 시스템 (인프라 완료, 활성 대기)
+
+### 구조
+- `filter_config` 테이블: 필터 임계값 13개 DB 보관 (코드 하드코딩 아님)
+- `tuning_runs`: 튜닝 시도 이력 (dryrun/applied/skipped/rolled_back)
+- `auto_tune.py`: 매주 일요일 성과 분석
+
+### 6겹 안전 장치
+1. 최소 샘플 20건/전략
+2. 변화폭 ±10% 이내
+3. 상한은 내리기만 (방향성 고정)
+4. 드라이런 2+회 연속 긍정 후 적용
+5. `ENABLE_AUTO_APPLY` 환경변수 토글
+6. 이전 version 재활성화로 수동 롤백
+
+### 타임라인
+| 시기 | 상태 |
+|---|---|
+| 지금~1개월 | `skipped` 반복 (샘플 부족) |
+| 1~2개월 | 첫 `dryrun` 기록 시작 |
+| 2~3개월 | 드라이런 누적 관찰 |
+| 3개월+ | 조건 충족 시 자동 `applied` |
+
+---
+
+## 7. 우철님 운영 체크리스트
+
+### 필수 한번 (배포 직후)
+1. **Supabase SQL 마이그레이션 미적용분 확인** — `RUNBOOK.md` 참조
+2. **GitHub Secrets**: `APP_URL`, `CRON_SECRET`, `KIS_APP_KEY`, `KIS_APP_SECRET`
+3. **Vercel 환경변수**: `CRON_SECRET` (동일 값)
+4. **`/login`**: 카카오 OAuth 1회 완료
+
+### 일상 운영 (자동, 특별한 작업 불필요)
+- 보유 종목 손절·익절 근접하면 카카오톡 자동 수신
+- 평일 16:00 새 스크리너 pick → 관심 가는 것만 [★관심] 토글 또는 "담기"
+- 관심 pick 이 진입가 도달하면 카카오톡 자동 수신
+- 매월 1일 Opus 리뷰 자동 생성 → `/reviews` 에서 확인
+
+### 수시로 확인
+- **대시보드 상단 pill** — 총 자산 / 오늘 수익률 / 긴급 경고 건수
+- **현금 비중** — 10% 미만 시 경고 뜨면 현금 확충 또는 일부 매도
+- **`/screener/performance`** — 2~3주마다 알고리즘 품질 체감
+
+---
+
+## 8. 남은 로드맵
+
+### 단기 (1~2주)
+- Phase A 스크리너 일 1회 실행 관찰 — 전략 분포 / 시장 게이트 작동 여부
+- KODEX 등 손절/익절 실제 값 재검토
+
+### 중기 (1~3개월)
+- 스크리너 Phase B: 피보나치 되돌림 전략 추가
+- Opus 리뷰 **Level 2** — 리뷰에서 실행 카드(체크박스로 손절/익절 조정 적용)
+- 자동 튜닝 첫 `applied` 이벤트 관찰
+
+### 장기 (3~6개월)
+- Phase C: 역헤드앤숄더 + 그랜빌 + 거래량 수축·확장
+- DART 공시 감지 → Claude 분류 → 카카오 알림
+- 섹터 상대강도 분석
+- ML 모델 도입 검토 (XGBoost 등, 데이터 1000+ 건 누적 후)
+
+---
+
+## 9. 다음 세션 시작 시 먼저 읽을 것
+
+1. `CLAUDE.md` — 코딩 규칙·컨벤션·제안 의무
+2. `docs/SESSION_NOTES.md` — 이 문서
+3. `docs/RUNBOOK.md` — 운영 매뉴얼 (SQL 순서·Secrets·장애 대응)
+4. 최근 `git log` — 직전 작업 확인
+5. `supabase/migrations/` — 최신 스키마 상태
+
+---
+
+## 10. 세션 메모리 포인터
+
+- 사용자 스타일: **분산 + ETF 중심**, 근무 중 모바일 위주 사용
+- 투자서 참고: **박병창 매매기술**
+- 능동적 제안 의무 (CLAUDE.md 기록): 수정 요청 시 더 나은 대안 먼저 제시
