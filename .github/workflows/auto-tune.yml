@@ -1,0 +1,35 @@
+name: Auto Tune Filter Thresholds
+
+# 매주 일요일 00:00 UTC (KST 09:00) — 성과 데이터 기반 필터 임계값 미세조정.
+# 초반 몇 개월은 샘플 부족으로 'skipped' 반복, 데이터 쌓이면 자동 활성화.
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch: {}
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: scripts/python/requirements-screener.txt
+
+      - name: Install dependencies
+        run: pip install -r scripts/python/requirements-screener.txt
+
+      - name: Run auto tune
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # 'false' 로 바꾸면 dryrun 만 (실 적용 중지 토글)
+          ENABLE_AUTO_APPLY: ${{ vars.ENABLE_AUTO_APPLY || 'true' }}
+        run: python scripts/python/auto_tune.py

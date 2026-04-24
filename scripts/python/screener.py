@@ -371,72 +371,116 @@ def build_features(
     )
 
 
-def strategy_low_buy(f: CandidateFeatures) -> bool:
-    """전략 A — 저점 매수 (기존 필터 그대로).
-    백테스트 기반 튜닝: RSI 25-55 + pos_52w ≤ 0.5 + 정배열 건전성 + 시총 500억+.
-    """
-    if f.rsi_14 > 55 or f.rsi_14 < 25:
+def strategy_low_buy(f: CandidateFeatures, config: dict) -> bool:
+    """전략 A — 저점 매수. 임계값은 DB filter_config 에서 로드."""
+    c = config.get("low_buy", DEFAULT_FILTER_CONFIG["low_buy"])
+    if f.rsi_14 > c["rsi_upper"] or f.rsi_14 < c["rsi_lower"]:
         return False
-    if f.ma60_gap_pct < -10:
+    if f.ma60_gap_pct < c["ma60_gap_lower"]:
         return False
+    # MA dual check — 파라미터화 안 함 (원칙적 안전장치)
     if f.ma20_gap_pct < 0 and f.ma60_gap_pct < 0:
         return False
-    if f.pos_52w > 0.5:
+    if f.pos_52w > c["pos_52w_upper"]:
         return False
-    if f.volume_ratio_5_20 < 1.0:
+    if f.volume_ratio_5_20 < c["vol_ratio_lower"]:
         return False
-    if f.return_5d_pct > 15 or f.return_5d_pct < -15:
+    if f.return_5d_pct > c["return_5d_upper"]:
         return False
-    if f.marcap > 0 and f.marcap < 500:
+    if f.return_5d_pct < c["return_5d_lower"]:
+        return False
+    if f.marcap > 0 and f.marcap < c["marcap_lower"]:
         return False
     return True
 
 
-def strategy_breakout(f: CandidateFeatures) -> bool:
-    """전략 B — 박병창식 박스권 돌파 매매.
-    핵심 원칙: 20일선 생명선 · 박스권 좁고 · 돌파 + 거래량 2배 + 장대양봉.
-    """
-    # 시총 하한 (이벤트 리스크 방어)
-    if f.marcap > 0 and f.marcap < 500:
+def strategy_breakout(f: CandidateFeatures, config: dict) -> bool:
+    """전략 B — 박병창식 박스권 돌파 매매."""
+    c = config.get("breakout", DEFAULT_FILTER_CONFIG["breakout"])
+    if f.marcap > 0 and f.marcap < c["marcap_lower"]:
         return False
-    # 정배열 + 20일선 상승 중
     if f.ma60_gap_pct <= 0 or f.ma20_gap_pct <= 0 or not f.ma20_rising:
         return False
-    # 60일 박스 폭 < 25% (매집·횡보 구간)
-    if f.box_range_pct <= 0 or f.box_range_pct > 25:
+    if f.box_range_pct <= 0 or f.box_range_pct > c["box_range_upper"]:
         return False
-    # 종가가 60일 고점 1% 이상 돌파
     if f.lo_60 <= 0 or f.close <= f.hi_60 * 1.01:
         return False
-    # 당일 거래량 20일 평균의 2배 이상
-    if f.vol_today_over_ma20 < 2.0:
+    if f.vol_today_over_ma20 < c["vol_today_over_ma20_lower"]:
         return False
-    # 장대양봉 — 당일 몸통 2% 이상
-    if f.today_body_pct < 2.0:
+    if f.today_body_pct < c["body_pct_lower"]:
         return False
-    # 과열 방어 — RSI 75+ 은 이미 꼭지 가능성
-    if f.rsi_14 > 75:
+    if f.rsi_14 > c["rsi_upper"]:
         return False
     return True
 
 
-def quant_filter(feats: list[CandidateFeatures]) -> list[CandidateFeatures]:
+# 내장 기본값 — DB 연결 실패 시 fallback.
+# migration 016 시드와 동일해야 함.
+DEFAULT_FILTER_CONFIG: dict[str, dict[str, float]] = {
+    "low_buy": {
+        "rsi_upper": 55, "rsi_lower": 25, "ma60_gap_lower": -10,
+        "pos_52w_upper": 0.5, "vol_ratio_lower": 1.0,
+        "return_5d_upper": 15, "return_5d_lower": -15, "marcap_lower": 500,
+    },
+    "breakout": {
+        "box_range_upper": 25, "vol_today_over_ma20_lower": 2.0,
+        "body_pct_lower": 2.0, "rsi_upper": 75, "marcap_lower": 500,
+    },
+}
+
+
+def load_filter_config(url: str, key: str) -> dict[str, dict[str, float]]:
+    """DB 에서 활성 필터 임계값 로드. 실패 시 기본값."""
+    try:
+        resp = requests.get(
+            f"{url}/rest/v1/filter_config",
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            params={"select": "strategy,param_name,value", "is_active": "eq.true"},
+            timeout=10,
+        )
+        if resp.status_code >= 300:
+            print(
+                f"  filter_config 조회 실패 ({resp.status_code}) — 기본값 사용",
+                file=sys.stderr,
+            )
+            return DEFAULT_FILTER_CONFIG
+        rows = resp.json()
+    except Exception as exc:
+        print(f"  filter_config 로드 실패 ({exc}) — 기본값 사용", file=sys.stderr)
+        return DEFAULT_FILTER_CONFIG
+
+    config: dict[str, dict[str, float]] = {}
+    for r in rows:
+        s = r.get("strategy")
+        p = r.get("param_name")
+        v = r.get("value")
+        if s and p and v is not None:
+            config.setdefault(s, {})[p] = float(v)
+    # 기본값으로 누락 항목 채움 (새 파라미터 추가 시 호환)
+    for s, defaults in DEFAULT_FILTER_CONFIG.items():
+        config.setdefault(s, {})
+        for k, v in defaults.items():
+            config[s].setdefault(k, v)
+    return config
+
+
+def quant_filter(
+    feats: list[CandidateFeatures], config: dict[str, dict[str, float]]
+) -> list[CandidateFeatures]:
     """다중 전략 적용. 각 후보에 strategy 태그 부여.
     같은 종목이 여러 전략 조건을 만족하면 우선순위: breakout > low_buy.
-    (돌파는 타이밍 중요, 저점 매수는 여유 있음)
     """
     out: list[CandidateFeatures] = []
     for f in feats:
         tag: str | None = None
-        if strategy_breakout(f):
+        if strategy_breakout(f, config):
             tag = "breakout"
-        elif strategy_low_buy(f):
+        elif strategy_low_buy(f, config):
             tag = "low_buy"
         if tag is None:
             continue
         f.strategy = tag
         out.append(f)
-    # 정렬: 전략별 우선순위 (돌파 먼저) + 거래량 증가율 + 52주 저점 탈출
     strategy_weight = {"breakout": 2.0, "low_buy": 1.0}
     out.sort(
         key=lambda x: (
@@ -916,8 +960,12 @@ def main() -> None:
     regime, regime_detail = compute_market_regime()
     print(f"시장 상태: {regime} ({regime_detail})")
 
+    # 필터 임계값 — DB 에서 로드 (auto_tune 이 수정할 수 있음)
+    config = load_filter_config(url, key)
+    print(f"필터 설정 로드: {list(config.keys())}")
+
     print("퀀트 필터 적용 중…")
-    passed_raw = quant_filter(feats)
+    passed_raw = quant_filter(feats, config)
     passed = apply_market_gate(passed_raw, regime)
     filtered_count = len(passed)
     strategy_counts = count_strategies(passed)
