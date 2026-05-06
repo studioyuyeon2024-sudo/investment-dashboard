@@ -39,15 +39,9 @@ export async function runDailyReport(): Promise<DailyReportResult> {
       const quote = await getCurrentQuote(h.ticker);
       await upsertSnapshotFromQuote(quote).catch(() => undefined);
 
-      if (Math.abs(quote.change_rate) < 1) {
-        perTicker.push({
-          ticker: h.ticker,
-          name: h.name,
-          status: "skipped",
-          reason: `변동률 ${quote.change_rate.toFixed(2)}% < 1%`,
-        });
-        continue;
-      }
+      // 일일 분석은 무조건 실행. 시장 전체가 크게 움직였는데 개별 종목이 잠잠한
+      // 경우에도 코멘터리·리스크 점검이 필요해 변동률 필터 제거.
+      // 비용은 응답 캐시(1h)·프롬프트 캐시(90% off)로 절감.
 
       const outcome = await analyzeTicker({
         ticker: h.ticker,
