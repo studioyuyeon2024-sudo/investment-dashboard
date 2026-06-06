@@ -503,14 +503,24 @@ def load_filter_config(url: str, key: str) -> dict[str, dict[str, float]]:
     return config
 
 
+# 유동성 하한 (억원) — 백테스트와 동일. 체결 현실성 + 슬리피지 방어.
+MIN_TURNOVER_EOK = 10.0
+
+
 def quant_filter(
     feats: list[CandidateFeatures], config: dict[str, dict[str, float]]
 ) -> list[CandidateFeatures]:
     """다중 전략 적용. 각 후보에 strategy 태그 부여.
     같은 종목이 여러 전략 조건을 만족하면 우선순위: breakout > low_buy.
+
+    공통 게이트 (전 전략 적용):
+    - 유동성: 20일 평균 거래대금 ≥ 10억원 (소형주 슬리피지·미체결 방어)
     """
     out: list[CandidateFeatures] = []
     for f in feats:
+        # 공통 유동성 게이트 — 거래대금 데이터 있을 때만 (0 이면 데이터 부족, 통과시킴)
+        if f.turnover_eok_20 > 0 and f.turnover_eok_20 < MIN_TURNOVER_EOK:
+            continue
         tag: str | None = None
         if strategy_breakout(f, config):
             tag = "breakout"
