@@ -61,26 +61,57 @@ function SummaryGrid({ summary }: { summary: PerformanceSummary }) {
     summary.avg_return_pct_finalized !== null
       ? changeColorClass(summary.avg_return_pct_finalized)
       : "";
+  const pf =
+    summary.profit_factor === null
+      ? "—"
+      : summary.profit_factor === Infinity
+        ? "∞"
+        : summary.profit_factor.toFixed(2);
+  const pfSub =
+    summary.profit_factor !== null && summary.profit_factor !== Infinity
+      ? summary.profit_factor >= 1.5
+        ? "양호 (≥1.5)"
+        : summary.profit_factor >= 1.2
+          ? "보통"
+          : "주의 (<1.2)"
+      : "손익비";
+  const RELIABILITY_LABEL: Record<string, string> = {
+    none: "데이터 없음",
+    insufficient: "⚠️ 표본<30 통계 불충분",
+    moderate: "표본 보통 (<100)",
+    reliable: "표본 충분",
+  };
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-      <Stat label="총 pick" value={`${summary.total}개`} />
-      <Stat
-        label="확정됨"
-        value={`${summary.finalized}개`}
-        sub={`진행 중 ${summary.in_progress}`}
-      />
-      <Stat
-        label="평균 수익률 (확정)"
-        value={avgReturn}
-        valueClass={avgReturnColor}
-        sub={summary.finalized > 0 ? "확정 pick 기준" : "데이터 부족"}
-      />
-      <Stat
-        label="승률"
-        value={winRate}
-        sub={`익절 ${summary.take_hit} / 손절 ${summary.stop_hit}`}
-      />
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Stat label="총 pick" value={`${summary.total}개`} />
+        <Stat
+          label="확정됨"
+          value={`${summary.finalized}개`}
+          sub={`진행 중 ${summary.in_progress}`}
+        />
+        <Stat
+          label="평균 수익률 (확정)"
+          value={avgReturn}
+          valueClass={avgReturnColor}
+          sub={RELIABILITY_LABEL[summary.reliability] ?? "확정 기준"}
+        />
+        <Stat
+          label="승률"
+          value={winRate}
+          sub={`익절 ${summary.take_hit} / 손절 ${summary.stop_hit}`}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Stat label="Profit Factor" value={pf} sub={pfSub} />
+        <Stat
+          label="기댓값/거래"
+          value={avgReturn}
+          valueClass={avgReturnColor}
+          sub="거래당 기대 손익"
+        />
+      </div>
     </div>
   );
 }

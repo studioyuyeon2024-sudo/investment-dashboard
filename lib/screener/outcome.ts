@@ -119,6 +119,9 @@ export type PerformanceSummary = {
   neither_hit: number;
   avg_return_pct_finalized: number | null;
   win_rate_finalized: number | null; // stop 안 맞고 take 맞춘 비율
+  profit_factor: number | null; // 총이익 / |총손실| (>1.5 양호)
+  expectancy_pct: number | null; // 거래당 기대 손익 (평균 수익률과 동일 개념)
+  reliability: "insufficient" | "moderate" | "reliable" | "none"; // 표본 신뢰도
   by_confidence: Record<
     string,
     { count: number; avg_return: number | null }
@@ -161,6 +164,29 @@ export function summarizePerformance(picks: PickForStats[]): PerformanceSummary 
   ).length;
   const win_rate_finalized = finalized > 0 ? (wins / finalized) * 100 : null;
 
+  // Profit Factor = 총이익 / |총손실|, expectancy = 평균 수익률
+  const gains = returns.filter((r) => r > 0);
+  const lossesAbs = returns.filter((r) => r <= 0).map((r) => Math.abs(r));
+  const totalGain = gains.reduce((a, b) => a + b, 0);
+  const totalLoss = lossesAbs.reduce((a, b) => a + b, 0);
+  const profit_factor =
+    returns.length === 0
+      ? null
+      : totalLoss === 0
+        ? Infinity
+        : totalGain / totalLoss;
+  const expectancy_pct = avg_return_pct_finalized;
+
+  // 표본 신뢰도 — 백테스트 콘솔과 동일 기준
+  const reliability: PerformanceSummary["reliability"] =
+    finalized === 0
+      ? "none"
+      : finalized < 30
+        ? "insufficient"
+        : finalized < 100
+          ? "moderate"
+          : "reliable";
+
   const by_confidence: Record<
     string,
     { count: number; avg_return: number | null }
@@ -194,6 +220,9 @@ export function summarizePerformance(picks: PickForStats[]): PerformanceSummary 
     neither_hit,
     avg_return_pct_finalized,
     win_rate_finalized,
+    profit_factor,
+    expectancy_pct,
+    reliability,
     by_confidence,
   };
 }
