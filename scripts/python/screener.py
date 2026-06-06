@@ -736,34 +736,53 @@ def call_claude(
         d["market_cap"] = format_marcap(d.pop("marcap"))
         payload.append(d)
 
-    # 자가학습 섹션 — 과거 confidence 별 승률·평균 수익률을 참고로.
-    # "당신의 과거 confidence=high 선택의 실제 승률이 40% 이면 high 를 남발하지 말라" 같은 톤.
+    # 자가학습 섹션 — 과거 confidence/strategy 별 성과를 참고로.
+    # 소표본 과적합 방지: 표본 수에 따라 신뢰도 라벨을 붙여 Claude 가 가중 조절.
     learning_section = ""
     if past_performance and past_performance.get("total_finalized", 0) >= 5:
+        total_n = past_performance["total_finalized"]
+        # 통계적 신뢰도 — 30 미만은 우연과 구분 불가 (이항분포 CI ±15%p 이상)
+        if total_n < 30:
+            reliability = "⚠️ 표본 부족(통계적으로 우연과 구분 어려움) — 약한 참고만"
+        elif total_n < 100:
+            reliability = "표본 보통 — 참고하되 과신 금지"
+        else:
+            reliability = "표본 충분 — 신뢰도 있음"
+
+        def _bucket_label(count: int) -> str:
+            # 버킷별 표본도 적으면 무시하라고 표시
+            if count < 10:
+                return " (표본<10, 무시 가능)"
+            if count < 30:
+                return " (표본 보통)"
+            return ""
+
         learning_section = (
-            f"\n\n[자가학습] 최근 {past_performance['days']}일 확정된 pick "
-            f"{past_performance['total_finalized']}건의 실제 성과:\n"
+            f"\n\n[자가학습] 최근 {past_performance['days']}일 확정 pick "
+            f"{total_n}건 — {reliability}\n"
             f"- 전체 승률 {past_performance['overall_win_rate_pct']:.1f}% · "
-            f"평균 수익률 {past_performance['overall_avg_return_pct']:.2f}%\n"
+            f"평균 {past_performance['overall_avg_return_pct']:.2f}%\n"
         )
         for row in past_performance.get("by_confidence", []):
             learning_section += (
                 f"- confidence={row['confidence']}: {row['count']}건, "
-                f"승률 {row['win_rate_pct']}%, 평균 {row['avg_return_pct']}%\n"
+                f"승률 {row['win_rate_pct']}%, 평균 {row['avg_return_pct']}%"
+                f"{_bucket_label(row['count'])}\n"
             )
-        # 전략별 과거 성과도 같이 — Claude 가 어느 전략에 비중을 둘지 참고
         if past_performance.get("by_strategy"):
-            learning_section += "\n전략별 실제 성과:\n"
+            learning_section += "전략별:\n"
             for row in past_performance["by_strategy"]:
                 learning_section += (
                     f"- strategy={row['strategy']}: {row['count']}건, "
-                    f"승률 {row['win_rate_pct']}%, 평균 {row['avg_return_pct']}%\n"
+                    f"승률 {row['win_rate_pct']}%, 평균 {row['avg_return_pct']}%"
+                    f"{_bucket_label(row['count'])}\n"
                 )
         learning_section += (
-            "\n위 실적은 당신의 과거 판단 결과입니다. confidence=high 의 실제 승률이 "
-            "낮으면 남발을 자제하고, 전체 평균 수익률이 음수면 더 보수적인 진입가·손절선을 "
-            "제시하세요. 전략별 승률 격차가 크면 승률 높은 전략 태그의 후보에 우선권을 주세요. "
-            "자가 보정 신호로 활용하되 이번 후보 자체 판단을 왜곡하진 말 것.\n"
+            "\n위는 과거 판단 결과입니다. **표본이 충분한(30+) 항목만 의미있게 반영**하고, "
+            "표본 부족 항목은 약한 참고로만 쓰세요. confidence=high 의 실제 승률이 낮으면 "
+            "high 남발 자제, 전체 평균이 음수면 더 보수적인 진입가·손절선. "
+            "전략별 승률 격차가 크고 표본도 충분하면 승률 높은 전략 후보에 우선권. "
+            "단, 이번 후보 자체의 기술적 판단을 과거 통계가 왜곡하진 말 것.\n"
         )
 
     user_message = (
