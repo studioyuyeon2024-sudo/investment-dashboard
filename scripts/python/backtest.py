@@ -247,6 +247,8 @@ def simulate_signal(
                 "pos_52w": pick.pos_52w,
                 "return_5d_pct_at_signal": round(pick.return_5d_pct, 2),
                 "return_20d_pct_at_signal": round(pick.return_20d_pct, 2),
+                "rs_rating": pick.rs_rating,
+                "return_252d_pct_at_signal": round(pick.return_252d_pct, 2),
             }
         )
     return results
@@ -268,8 +270,10 @@ def run_backtest(
     print(f"  {len(tickers)}개 (KOSPI {top_kospi} + KOSDAQ {top_kosdaq})")
     print(f"  손절 {stop_atr}*ATR / 익절 {target_atr}*ATR / 비용 {ROUND_TRIP_COST_PCT}%")
 
-    # 시그널 전 지표 계산 위해 +120일, 청산 위해 +hold_days 여유
-    load_start = (start - timedelta(days=120)).strftime("%Y-%m-%d")
+    # 시그널 전 지표 계산 위해 여유 — RS(12개월=252거래일) 산정 위해 ~420일 선로딩.
+    # (이격·박스권은 60~120일이면 충분하나, RS rating 백분위가 신호 초반부터
+    #  유효하려면 신호 시작 시점에 253봉 이상 필요)
+    load_start = (start - timedelta(days=420)).strftime("%Y-%m-%d")
     load_end = (end + timedelta(days=hold_days + 10)).strftime("%Y-%m-%d")
     print(f"OHLCV 로딩 {load_start} ~ {load_end}…")
     ohlcv = preload_ohlcv(tickers, load_start, load_end)
@@ -378,6 +382,25 @@ def print_summary(df: pd.DataFrame) -> None:
     )
     by_rsi.columns = ["count", "avg_return", "win_rate_pct"]
     print(f"\nRSI 구간별:\n{by_rsi}")
+
+    # RS(상대강도) 구간별 — rs_lower 임계값 결정용. RS≥70 이 실제로 우월한지 확인.
+    if "rs_rating" in df.columns:
+        def rs_bucket(r: float) -> str:
+            if r < 50:
+                return "RS 00-50"
+            if r < 70:
+                return "RS 50-70"
+            if r < 90:
+                return "RS 70-90"
+            return "RS 90-100"
+
+        df3 = df.copy()
+        df3["rs_bucket"] = df3["rs_rating"].apply(rs_bucket)
+        by_rs = df3.groupby("rs_bucket")["return_pct"].agg(
+            ["count", "mean", lambda s: (s > 0).mean() * 100]
+        )
+        by_rs.columns = ["count", "avg_return", "win_rate_pct"]
+        print(f"\nRS 구간별 (rs_lower 임계값 결정용):\n{by_rs}")
 
 
 def main() -> None:
