@@ -435,6 +435,13 @@ def strategy_low_buy(f: CandidateFeatures, config: dict) -> bool:
     # rs_rating 은 quant_filter 에서 유니버스 백분위로 미리 채워짐. 기본 0=비활성.
     if f.rs_rating < c.get("rs_lower", 0.0):
         return False
+    # RS 제외 구간 — 2026-06 백테스트(389 pick): RS 70-90 구간이 -2.87%/승률 37.8%
+    # 로 가장 나쁜 구간. "꽤 강했던 종목의 깊은 조정"(추세 붕괴 초기) 패턴 회피.
+    # 비활성화하려면 두 값을 같게(또는 0/0). exclude_min < rs ≤ exclude_max 제외.
+    rs_excl_min = c.get("rs_exclude_min", 0.0)
+    rs_excl_max = c.get("rs_exclude_max", 0.0)
+    if rs_excl_max > rs_excl_min and rs_excl_min < f.rs_rating <= rs_excl_max:
+        return False
     if f.rsi_14 > c["rsi_upper"] or f.rsi_14 < c["rsi_lower"]:
         return False
     if f.ma60_gap_pct < c["ma60_gap_lower"]:
@@ -492,8 +499,13 @@ DEFAULT_FILTER_CONFIG: dict[str, dict[str, float]] = {
         "rsi_upper": 55, "rsi_lower": 25, "ma60_gap_lower": -10,
         "pos_52w_upper": 0.5, "vol_ratio_lower": 1.0,
         "return_5d_upper": 15, "return_5d_lower": -15, "marcap_lower": 500,
-        # RS 게이트 하한(0~100 백분위). 0=비활성. 백테스트 검증 후 70 권장.
+        # RS 게이트 하한(0~100 백분위). 0=비활성. 한국 시장은 단조관계가 아님(아래 참고).
         "rs_lower": 0,
+        # RS 제외 구간 (exclude_min < rs ≤ exclude_max). 2026-06 백테스트(389 pick)
+        # 에서 RS 70-90 이 -2.87%/승률 37.8% 로 최악 → "강했던 종목 깊은 조정" 회피.
+        # 비활성화: 두 값을 같게(또는 0/0).
+        "rs_exclude_min": 70,
+        "rs_exclude_max": 90,
     },
     # breakout: 2026-06 백테스트에서 음(-)의 엣지로 확인되어 기본 비활성.
     # 재활성화: DB filter_config 에 (strategy=breakout, param_name=enabled, value=1).
