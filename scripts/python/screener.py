@@ -499,8 +499,12 @@ DEFAULT_FILTER_CONFIG: dict[str, dict[str, float]] = {
         "rsi_upper": 55, "rsi_lower": 25, "ma60_gap_lower": -10,
         "pos_52w_upper": 0.5, "vol_ratio_lower": 1.0,
         "return_5d_upper": 15, "return_5d_lower": -15, "marcap_lower": 500,
-        # RS 게이트 하한(0~100 백분위). 0=비활성. 한국 시장은 단조관계가 아님(아래 참고).
-        "rs_lower": 0,
+        # RS 게이트 하한(0~100 백분위). 2026-06 run #5 백테스트:
+        #   RS 00-50  229건  -0.16%/승률 39.3%  ← 음의 엣지
+        #   RS 50-70  134건  +1.01%/승률 49.3%
+        #   RS 90-100  25건  +3.32%/승률 56.0%  (표본<30)
+        # → RS 50 미만은 약한 종목 저점매수("떨어지는 칼날") 패턴. 회피.
+        "rs_lower": 50,
         # RS 제외 구간 (exclude_min < rs ≤ exclude_max). 2026-06 백테스트(389 pick)
         # 에서 RS 70-90 이 -2.87%/승률 37.8% 로 최악 → "강했던 종목 깊은 조정" 회피.
         # 비활성화: 두 값을 같게(또는 0/0).
