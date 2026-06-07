@@ -413,6 +413,9 @@ def build_features(
 def strategy_low_buy(f: CandidateFeatures, config: dict) -> bool:
     """전략 A — 저점 매수. 임계값은 DB filter_config 에서 로드."""
     c = config.get("low_buy", DEFAULT_FILTER_CONFIG["low_buy"])
+    # enabled=0 이면 전략 비활성화 (DB filter_config 또는 기본값으로 토글)
+    if c.get("enabled", 1.0) < 0.5:
+        return False
     if f.rsi_14 > c["rsi_upper"] or f.rsi_14 < c["rsi_lower"]:
         return False
     if f.ma60_gap_pct < c["ma60_gap_lower"]:
@@ -434,8 +437,17 @@ def strategy_low_buy(f: CandidateFeatures, config: dict) -> bool:
 
 
 def strategy_breakout(f: CandidateFeatures, config: dict) -> bool:
-    """전략 B — 박병창식 박스권 돌파 매매."""
+    """전략 B — 박병창식 박스권 돌파 매매.
+
+    2026-06 백테스트(387 pick)에서 breakout 표본 63건이 승률 28.6% / 평균
+    -2.67% 로 전체 expectancy 를 음수(-0.18%)로 끌어내림이 확인되어 기본
+    비활성화. low_buy 단독은 +0.31%. DB filter_config 에 breakout/enabled=1
+    행을 넣으면 재활성화되며, 데이터 더 쌓이면 재검증 예정.
+    """
     c = config.get("breakout", DEFAULT_FILTER_CONFIG["breakout"])
+    # enabled=0 이면 전략 비활성화 (DB filter_config 또는 기본값으로 토글)
+    if c.get("enabled", 1.0) < 0.5:
+        return False
     if f.marcap > 0 and f.marcap < c["marcap_lower"]:
         return False
     if f.ma60_gap_pct <= 0 or f.ma20_gap_pct <= 0 or not f.ma20_rising:
@@ -457,11 +469,15 @@ def strategy_breakout(f: CandidateFeatures, config: dict) -> bool:
 # migration 016 시드와 동일해야 함.
 DEFAULT_FILTER_CONFIG: dict[str, dict[str, float]] = {
     "low_buy": {
+        "enabled": 1.0,
         "rsi_upper": 55, "rsi_lower": 25, "ma60_gap_lower": -10,
         "pos_52w_upper": 0.5, "vol_ratio_lower": 1.0,
         "return_5d_upper": 15, "return_5d_lower": -15, "marcap_lower": 500,
     },
+    # breakout: 2026-06 백테스트에서 음(-)의 엣지로 확인되어 기본 비활성.
+    # 재활성화: DB filter_config 에 (strategy=breakout, param_name=enabled, value=1).
     "breakout": {
+        "enabled": 0.0,
         "box_range_upper": 25, "vol_today_over_ma20_lower": 2.0,
         "body_pct_lower": 2.0, "rsi_upper": 75, "marcap_lower": 500,
     },
