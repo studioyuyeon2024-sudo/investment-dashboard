@@ -559,6 +559,12 @@ def load_filter_config(url: str, key: str) -> dict[str, dict[str, float]]:
 # 유동성 하한 (억원) — 백테스트와 동일. 체결 현실성 + 슬리피지 방어.
 MIN_TURNOVER_EOK = 10.0
 
+# 정렬 보너스 — RS 90-100 종목 단기 스윙 성과 우월.
+# (2026-06 백테스트 run #8: RS 90-100 25건 +3.32%·승률 56% vs RS 50-70 191건 +1.25%·51%)
+# 게이트가 아니라 정렬 점수 보너스 — Top-N 슬롯 경쟁에서 RS 강세 종목 우선.
+RS_STRONG_SORT_BONUS = 0.05
+RS_STRONG_THRESHOLD = 90.0
+
 
 def quant_filter(
     feats: list[CandidateFeatures], config: dict[str, dict[str, float]]
@@ -595,7 +601,8 @@ def quant_filter(
             strategy_weight.get(x.strategy or "low_buy", 0.5),
             (x.rs_rating / 100.0) * 0.4
             + min(x.volume_ratio_5_20, 3.0) / 3.0 * 0.3
-            + (1 - x.pos_52w) * 0.3,
+            + (1 - x.pos_52w) * 0.3
+            + (RS_STRONG_SORT_BONUS if x.rs_rating >= RS_STRONG_THRESHOLD else 0.0),
         ),
         reverse=True,
     )
